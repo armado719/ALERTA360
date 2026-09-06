@@ -1,0 +1,9 @@
+En Docker Desktop → Containers busca alerta360-db (Up). Ahí ves logs, files y el terminal.
+Datos de conexión (para DBeaver/pgAdmin o el terminal del contenedor):
+- Host localhost:5432, DB alerta360, user alerta360, pass alerta360_dev
+Comandos útiles:
+docker ps --filter "name=alerta360-db"
+docker logs alerta360-db --tail 20
+docker exec -it alerta360-db psql -U alerta360 -d alerta360
+\dt
+SELECT name, status FROM "Assets" LIMIT 5;
