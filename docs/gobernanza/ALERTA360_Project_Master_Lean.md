@@ -279,7 +279,7 @@ El ejemplo multi-tipo (sensores + sirenas + comunicaciones, con el contraste 92%
 
 ### 10.1 Estimaciones operativas pendientes (no se puede dimensionar el piloto sin esto)
 
-> Fuente única para responder estas 4 preguntas: `ALERTA360_Checklist_Levantamiento_Tecnico.md` §5 (una ficha por piloto). No duplicar aquí.
+> Fuente única para responder estas 4 preguntas: `docs/fase0-validacion-campo/ALERTA360_Checklist_Levantamiento_Tecnico.md` §5 (una ficha por piloto). No duplicar aquí.
 
 Estas preguntas deben responderse con datos del cliente piloto real, antes de comprometer una arquitectura de despliegue definitiva:
 

@@ -1,4 +1,5 @@
 # ALERTA360 — Nota de continuidad (2026-09-06)
+> ⚠️ **OBSOLETA — archivada.** Snapshot de retomada del 2026-09-06, superado por el Registro de avance del Project Master (sección 7). No usar como referencia de estado actual.
 *Punto de retomada: seguimos desde aquí.*
 
 ## Dónde estamos
@@ -13,7 +14,7 @@
 - Para levantar: `docker compose up -d db` + `dotnet run --urls "http://localhost:5000"` (en `src/Alerta360.Api`) + `npm.cmd run dev -- --port 5173` (en `src/frontend`).
 
 ## Siguiente paso al retomar
-1. Conseguir 8-10 contactos por vertical y registrarlos en `ALERTA360_Seguimiento_Contactos.csv`.
+1. Conseguir 8-10 contactos por vertical y registrarlos en `docs/fase0-validacion-campo/ALERTA360_Seguimiento_Contactos.csv`.
 2. Hacer las 6 entrevistas con el guion del Protocolo; traer notas → se llenan registro + matriz + checklist aquí.
 3. Con vertical/activo/protocolo reales: re-cierre de Espec/Arq, ingesta real, Fase 1 al 100%.
 

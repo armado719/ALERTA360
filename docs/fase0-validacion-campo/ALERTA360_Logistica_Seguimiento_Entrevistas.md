@@ -1,7 +1,7 @@
 # ALERTA360 — Logística y Seguimiento de Entrevistas de Validación de Campo
 *Complementa al Protocolo de Validación de Campo (que cubre el guion y la rúbrica). Este documento cubre CÓMO conseguir, agendar y dar seguimiento a las conversaciones.*
 
-> Estado: ACTIVA (reactivada 2026-09-06 para cerrar Fase 0). Tracker: `ALERTA360_Seguimiento_Contactos.csv`.
+> Estado: ACTIVA (reactivada 2026-09-06 para cerrar Fase 0). Tracker: `ALERTA360_Seguimiento_Contactos.csv` (esta misma carpeta).
 
 ---
 
@@ -97,7 +97,7 @@ No preguntar "¿cuándo te queda bien?" — eso genera fricción e idas y vuelta
 
 ### Inmediatamente después (dentro de los primeros 15-20 minutos, no dejar para la noche)
 - [ ] Llenar la plantilla de registro completa mientras está fresco en la memoria
-- [ ] Pasar la puntuación (1-5 por dimensión) al `Matriz_Comparativa.csv`
+- [ ] Pasar la puntuación (1-5 por dimensión) al `ALERTA360_Matriz_Comparativa_Plantilla.csv` (misma carpeta)
 - [ ] Si dieron un referido, escribirle el mismo día o al siguiente, mientras la mención está reciente
 
 ---

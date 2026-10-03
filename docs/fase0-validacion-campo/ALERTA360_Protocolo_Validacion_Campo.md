@@ -67,7 +67,7 @@ Para cada conversación, calificar de 1 a 5 en cada dimensión (1 = no hay evide
 
 ## 4. Matriz comparativa
 
-**Fuente única de verdad: `Matriz_Comparativa.csv`** (archivo separado, no se duplica aquí). Se carga con los resultados de las 6+ entrevistas y sirve para aplicar la regla de decisión de abajo. Si en algún momento aparece una segunda copia de esta matriz en otro documento, se elimina — solo debe existir en el CSV.
+**Fuente única de verdad: `ALERTA360_Matriz_Comparativa_Plantilla.csv`** (archivo separado, en esta misma carpeta, no se duplica aquí). Se carga con los resultados de las 6+ entrevistas y sirve para aplicar la regla de decisión de abajo. Si en algún momento aparece una segunda copia de esta matriz en otro documento, se elimina — solo debe existir en el CSV.
 
 **Regla de decisión:** el vertical con mayor TOTAL se convierte en el candidato al piloto — pero solo si además tuvo al menos una historia concreta de "dolor real" con puntaje 4 o 5. Si el vertical con mayor total no tiene esa historia, no se elige todavía: se hacen 1-2 entrevistas adicionales en ese vertical antes de decidir.
 
