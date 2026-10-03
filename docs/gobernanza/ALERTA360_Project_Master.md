@@ -118,7 +118,7 @@ Auditoría avanzada, integración con IDEAM/SGC/UNGRD/SAT, correlación multi-fu
 |---|---|
 | Backend | C# con ASP.NET Core |
 | Base de datos | **PostgreSQL** (Docker en desarrollo y en el piloto) |
-| Frontend | React |
+| Frontend | TypeScript + Vite (sin framework — DOM directo) |
 | Ingesta | HTTP/webhook como base, con capa adaptadora si el protocolo real de Fase 0 resulta distinto |
 | Infraestructura | Docker (incluyendo el contenedor de PostgreSQL en desarrollo local) |
 | Explícitamente NO incluido en el MVP | Redis, RabbitMQ, SignalR, PostGIS, OAuth2/OIDC completo, mapa geoespacial |
@@ -157,4 +157,6 @@ Fecha        Fase   Evento
 2026-09-06   1      Fase 1 técnica cerrada con simulados: seed 20 (5 críticos), Health 5D + veto, Capability ponderada=90, 5 incidentes, dashboard mínimo, worker 5 min. Real queda bloqueado por Fase 0.
 2026-09-06   2      Fase 2 CERRADA SIN EJECUTAR: sin cliente/acuerdo/telemetría real no hay piloto (desenlace #3 válido). Reapertura solo con Fase 0 cerrada. Aprendizaje: el MVP técnico detecta los 4 patrones (sano/stale/congelado/fuera-rango); falta validación operativa real.
 2026-09-06   0      Fase 0 REACTIVADA para cerrar faltantes: logística activa + tracker de contactos creado. Entrevistas (6) y validación técnica siguen en manos del equipo de campo.
+2026-10-03   1      DECISIÓN: frontend se mantiene como TypeScript + Vite sin framework (DOM directo), no React. Corregidos los 4 documentos que decían "React". Migración a React se re-evalúa después de Fase 0 si el crecimiento de pantallas lo justifica.
+2026-10-03   1      Documentación reorganizada en docs/{gobernanza,fase0,fase1,fase2,archivo} + índice README. Plantillas residuales eliminadas (Vite + /weatherforecast). Frontend real rescatado a git.
 ```

@@ -172,7 +172,7 @@ IncidentEvent creado
 - Base de datos: PostgreSQL (esquema de sección 2 de este documento)
 - Ingesta: endpoint HTTP (sección 3), sin cola de mensajería en MVP
 - Job de cálculo: proceso periódico simple (hosted service / cron), no motor de streaming
-- Frontend: React, consumiendo API REST sobre los mismos endpoints/tablas
+- Frontend: TypeScript + Vite (sin framework), consumiendo API REST sobre los mismos endpoints/tablas
 
 ---
 

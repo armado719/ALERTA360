@@ -165,7 +165,7 @@ Almacenamiento (histórico + estado actual)
 | Ingesta | Webhook HTTP + soporte MQTT si el activo lo requiere | Confirmar protocolo real del cliente piloto antes de decidir (ver sección 10) |
 | Cola/mensajería | Ninguna todavía | RabbitMQ se agrega solo si el volumen lo justifica |
 | Tiempo real | Polling simple en el dashboard | SignalR se agrega solo si el cliente pide vista en vivo |
-| Frontend | React | Dashboard simple, sin mapa |
+| Frontend | TypeScript + Vite (sin framework) | Dashboard simple, sin mapa |
 | Auth | Autenticación estándar + cifrado en tránsito/reposo | RBAC granular y Zero Trust se posponen a cuando haya múltiples clientes/instituciones |
 | Infraestructura | Docker + un solo entorno | CI/CD básico, sin necesidad de alta disponibilidad multi-región todavía |
 

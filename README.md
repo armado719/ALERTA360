@@ -58,7 +58,7 @@ docs/
 | Ruta | Qué es |
 |---|---|
 | `src/Alerta360.Api/` | Backend ASP.NET Core (C#) + PostgreSQL |
-| `src/frontend/` | Frontend React/Vite (dashboard) |
+| `src/frontend/` | Frontend TypeScript + Vite (sin framework — DOM directo) |
 | `src/frontend/DESIGN.md` | **Fuente autoritativa** de tokens visuales (colores, tipografía, componentes) |
 | `App.jsx` | Preview autónomo del dashboard, para validar visual sin flujo Vite/TS |
 | `MEMORY.md` | Memoria de workspace autogenerada (plugin `.remember`) — no editar a mano |
