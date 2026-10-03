@@ -109,7 +109,7 @@ public class HealthEvaluationService(Alerta360DbContext db, INotificationService
                 AssetId = asset.Id, EventType = evt, DetectedAt = now,
                 Notes = $"Health {prev?.Status}->{status}. {reason} (D{disp}/F{fres}/C{cal}/Co{cons}/Cm{com})"
             });
-            notify.TryNotify(asset.Id, asset.Name, prev?.Status.ToString() ?? "none", status.ToString(), reason);
+            await notify.TryNotifyAsync(asset.Id, asset.Name, prev?.Status.ToString() ?? "none", status.ToString(), reason, ct);
             log.LogInformation("Asset {Name}: {Prev}->{Status} total={Total} {Reason}", asset.Name, prev?.Status, status, total, reason);
         }
 

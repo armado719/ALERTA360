@@ -2,6 +2,7 @@ using Alerta360.Api.Data;
 using Alerta360.Api.Models;
 using Alerta360.Api.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Alerta360.Tests;
@@ -18,9 +19,10 @@ public class HealthEvaluationServiceTests : IDisposable
             .UseInMemoryDatabase($"alerta360-tests-{Guid.NewGuid()}")
             .Options;
         _db = new Alerta360DbContext(options);
+        var notifyConfig = new ConfigurationBuilder().AddInMemoryCollection().Build();
         _svc = new HealthEvaluationService(
             _db,
-            new NotificationService(NullLogger<NotificationService>.Instance),
+            new NotificationService(new HttpClient(), notifyConfig, NullLogger<NotificationService>.Instance),
             NullLogger<HealthEvaluationService>.Instance);
         _client = new Client { Name = "Cliente test" };
         _db.Clients.Add(_client);

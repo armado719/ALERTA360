@@ -99,6 +99,21 @@ curl -X POST http://localhost:5000/api/dev/seed -H "X-API-Key: alerta360-dev-key
 
 ---
 
+## Notificaciones (Telegram)
+
+`NotificationService` notifica cuando un activo **cambia de estado** (anti-spam: 1×/30 min mismo activo→estado; recuperación notifica ya mismo). Dos modos:
+
+- **Sin configurar** (default): solo escribe en el log de la API.
+- **Configurado**: envía a Telegram Bot API (`sendMessage`, timeout 10 s). Si Telegram falla, **no** consume la ventana anti-spam → se reintenta en el próximo cambio. El token nunca aparece en logs (sanitizado).
+
+```json
+"Notifications": { "Telegram": { "BotToken": "123456:ABC-DEF", "ChatId": "-100123" } }
+```
+
+(Opcional en local: `appsettings.Development.json` o env `Notifications__Telegram__BotToken` / `__ChatId`.)
+
+---
+
 ## Notas y deudas conocidas
 
 - **⚠️ Credenciales en git:** `NO BORRAR.txt` contiene credenciales de la DB local (`alerta360_dev`) y está trackeado. Son de desarrollo, no de producción, pero conviene sacarlo del repo y pasarlo a `.gitignore` (pendiente).

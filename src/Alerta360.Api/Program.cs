@@ -15,7 +15,9 @@ builder.Services.AddControllers().AddJsonOptions(o =>
 builder.Services.AddDbContext<Alerta360DbContext>(opt =>
     opt.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 
-builder.Services.AddSingleton<INotificationService, NotificationService>();
+// Cliente tipado para Telegram Bot API (NotificationService).
+builder.Services.AddHttpClient<INotificationService, NotificationService>(c =>
+    c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddScoped<HealthEvaluationService>();
 builder.Services.AddHostedService<HealthScoreWorker>();
 
