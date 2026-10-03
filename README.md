@@ -85,6 +85,20 @@ npm run build                                 # en src/frontend
 
 ---
 
+## Auth mínima (API key)
+
+Header `X-API-Key`. Protegido: **`/api/dev/*` (siempre)** y **cualquier escritura** (POST/PUT/PATCH/DELETE). Público: GET del dashboard y `/health`.
+
+- Dev: la key está en `src/Alerta360.Api/appsettings.Development.json` → `alerta360-dev-key`
+- Producción: definir env `Security__ApiKey` (sin configurar → los endpoints protegidos responden **503**, fail-closed)
+- Comparación de key en tiempo fijo (`FixedTimeEquals`)
+
+```
+curl -X POST http://localhost:5000/api/dev/seed -H "X-API-Key: alerta360-dev-key"
+```
+
+---
+
 ## Notas y deudas conocidas
 
 - **⚠️ Credenciales en git:** `NO BORRAR.txt` contiene credenciales de la DB local (`alerta360_dev`) y está trackeado. Son de desarrollo, no de producción, pero conviene sacarlo del repo y pasarlo a `.gitignore` (pendiente).

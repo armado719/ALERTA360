@@ -34,6 +34,9 @@ app.UseHttpsRedirection();
 
 app.UseCors();
 
+// Auth mínima por API key: /api/dev/* y cualquier escritura (401 sin key, 503 si no está configurada).
+app.UseMiddleware<Alerta360.Api.Middleware.ApiKeyMiddleware>();
+
 app.MapControllers();
 
 // NOTA Fase 1 esqueleto: sin endpoint de ingesta real (bloqueado hasta Fase 0).

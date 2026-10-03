@@ -17,8 +17,16 @@ Accept: application/json
 
 POST {{Alerta360.Api_HostAddress}}/api/dev/seed
 Accept: application/json
+X-API-Key: alerta360-dev-key
 
 ###
 
 POST {{Alerta360.Api_HostAddress}}/api/dev/evaluate
+Accept: application/json
+X-API-Key: alerta360-dev-key
+
+###
+
+# Sin key -> 401
+POST {{Alerta360.Api_HostAddress}}/api/dev/seed
 Accept: application/json
