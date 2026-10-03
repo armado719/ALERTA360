@@ -109,7 +109,15 @@ const statusMeta: Record<string, { label: string; tone: string }> = {
   Healthy: { label: 'Saludable', tone: 'good' },
   DegradedMinor: { label: 'Degradación menor', tone: 'warn' },
   DegradedMajor: { label: 'Degradación mayor', tone: 'risk' },
-  Incident: { label: 'Incidente', tone: 'bad' },
+  Critical: { label: 'Crítico', tone: 'bad' },
+  DataUnreliable: { label: 'Datos no confiables', tone: 'risk' },
+}
+
+const eventLabels: Record<string, string> = {
+  Degraded: 'Degradación detectada',
+  Critical: 'Estado crítico',
+  Recovered: 'Recuperación',
+  DataUnreliable: 'Datos no confiables',
 }
 
 const scoreKeys: Array<[keyof Score, string]> = [
@@ -189,7 +197,7 @@ function renderDashboard(assets: AssetRow[], capability: Capability | null, inci
             <li>
               <span class="incident-marker" aria-hidden="true"></span>
               <div>
-                <strong>${escapeHtml(incident.eventType)}</strong>
+                <strong>${escapeHtml(eventLabels[incident.eventType] ?? incident.eventType)}</strong>
                 <p>${formatDate(incident.detectedAt)} · ${escapeHtml(incident.notes || 'Sin nota operacional')}</p>
               </div>
             </li>`,

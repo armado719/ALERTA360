@@ -68,14 +68,14 @@ public class HealthEvaluationService(Alerta360DbContext db, INotificationService
         var total = (int)Math.Round(0.30 * cons + 0.25 * cal + 0.20 * disp + 0.15 * fres + 0.10 * com);
 
         // Veto (Master §9): consistencia o calidad en rojo → nunca saludable.
+        // Falso saludable: operativo pero mintiendo → DataUnreliable; sin conexión (disp y fres en rojo) → Critical.
         AssetStatus status;
         string reason;
         if (cons == 0 || cal == 0)
         {
-            status = cons == 0 && cal == 0 ? AssetStatus.DegradedMajor : AssetStatus.DegradedMinor;
-            reason = cons == 0 ? consReason : calReason;
-            if (disp == 0 && fres == 0) status = AssetStatus.Critical;
-            // Se expone como "datos no confiables" vía evento DataUnreliable + banda degradada.
+            reason = cons == 0 && cal == 0 ? $"{consReason}; {calReason}"
+                : cons == 0 ? consReason : calReason;
+            status = disp == 0 && fres == 0 ? AssetStatus.Critical : AssetStatus.DataUnreliable;
         }
         else
         {
@@ -100,8 +100,7 @@ public class HealthEvaluationService(Alerta360DbContext db, INotificationService
 
         if ((prev is null && status != AssetStatus.Healthy) || (prev is not null && prev.Status != status))
         {
-            var evt = (cons == 0 || cal == 0) && status != AssetStatus.Critical
-                ? IncidentEventType.DataUnreliable
+            var evt = status == AssetStatus.DataUnreliable ? IncidentEventType.DataUnreliable
                 : status == AssetStatus.Healthy ? IncidentEventType.Recovered
                 : status == AssetStatus.Critical ? IncidentEventType.Critical
                 : IncidentEventType.Degraded;
@@ -142,7 +141,7 @@ public class HealthEvaluationService(Alerta360DbContext db, INotificationService
         {
             ClientId = clientId, CalculatedAt = DateTime.UtcNow,
             Score = score, AssetCount = assets.Count,
-            CriticalAssetCount = assets.Count(a => a.Status == AssetStatus.Critical)
+            CriticalAssetCount = crit
         });
         return score;
     }

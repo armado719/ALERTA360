@@ -37,8 +37,14 @@ app.UseCors();
 app.MapControllers();
 
 // NOTA Fase 1 esqueleto: sin endpoint de ingesta real (bloqueado hasta Fase 0).
-// Solo health-check para verificar API + DB.
-app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "alerta360-api" }))
+// Health-check que verifica API + conectividad con la base de datos.
+app.MapGet("/health", async (Alerta360DbContext db, CancellationToken ct) =>
+{
+    var dbOk = await db.Database.CanConnectAsync(ct);
+    return dbOk
+        ? Results.Ok(new { status = "ok", service = "alerta360-api", db = "ok" })
+        : Results.Json(new { status = "degraded", service = "alerta360-api", db = "error" }, statusCode: 503);
+})
 .WithName("Health");
 
 app.Run();
