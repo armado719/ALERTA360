@@ -461,3 +461,139 @@ td > strong {
     font-size: 4rem;
   }
 }
+
+/* --- Detalle de activo + histórico --- */
+
+.asset-row {
+  cursor: pointer;
+}
+
+.asset-row:hover td {
+  background: var(--accent-soft);
+}
+
+.asset-row:focus-visible {
+  outline: 3px solid rgba(170, 59, 255, 0.32);
+  outline-offset: -3px;
+}
+
+.detail-hero {
+  align-items: end;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  padding: clamp(24px, 4vw, 44px);
+}
+
+.detail-hero h1 {
+  font-size: clamp(1.9rem, 4.5vw, 3.2rem);
+}
+
+.detail-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.button-secondary {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.button-secondary:hover {
+  background: var(--accent-soft);
+  box-shadow: none;
+}
+
+.chart-wrap {
+  padding: 18px 22px 6px;
+}
+
+.score-chart {
+  margin: 0;
+}
+
+.score-chart svg {
+  display: block;
+  height: auto;
+  width: 100%;
+}
+
+.chart-label {
+  fill: var(--muted);
+  font: 700 11px var(--sans);
+}
+
+.chart-label--critical {
+  fill: var(--danger);
+}
+
+.chart-empty {
+  padding: 24px 22px;
+}
+
+.detail-side {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.ficha dl {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 4px 22px 22px;
+}
+
+.ficha dl > div {
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 14px 0;
+}
+
+.ficha dl > div + div {
+  border-top: 1px solid var(--border);
+}
+
+.ficha dt {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.ficha dd {
+  color: var(--text);
+  font-weight: 650;
+  margin: 0;
+  text-align: right;
+}
+
+.error-state {
+  margin-top: 28px;
+  padding: clamp(24px, 4vw, 44px);
+  text-align: left;
+}
+
+.error-state .muted {
+  margin: 14px 0 22px;
+}
+
+@media (max-width: 920px) {
+  .detail-hero {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .detail-hero .button-secondary {
+    width: 100%;
+  }
+}

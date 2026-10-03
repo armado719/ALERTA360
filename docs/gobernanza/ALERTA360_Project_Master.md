@@ -159,4 +159,9 @@ Fecha        Fase   Evento
 2026-09-06   0      Fase 0 REACTIVADA para cerrar faltantes: logística activa + tracker de contactos creado. Entrevistas (6) y validación técnica siguen en manos del equipo de campo.
 2026-10-03   1      DECISIÓN: frontend se mantiene como TypeScript + Vite sin framework (DOM directo), no React. Corregidos los 4 documentos que decían "React". Migración a React se re-evalúa después de Fase 0 si el crecimiento de pantallas lo justifica.
 2026-10-03   1      Documentación reorganizada en docs/{gobernanza,fase0,fase1,fase2,archivo} + índice README. Plantillas residuales eliminadas (Vite + /weatherforecast). Frontend real rescatado a git.
+2026-10-03   1      Brechas código-doc cerradas: estado DataUnreliable (veto), CriticalAssetCount=count(IsCritical), /health verifica BD.
+2026-10-03   1      Tests xUnit (29) + CI GitHub Actions (build+test backend, build frontend).
+2026-10-03   1      Auth mínima: API key (X-API-Key) protege /api/dev/* y escrituras; GET dashboard y /health públicos; fail-closed (503 sin key configurada).
+2026-10-03   1      Notificación Telegram real (Bot API) con anti-spam; sin token configurado solo loguea (fail-soft).
+2026-10-03   1      Pantallas detalle activo + histórico: endpoints /api/assets/{id}[/scores|/incidents], feed /api/incidents público; frontend con router hash, gráfico SVG de score y tabla por dimensión.
 ```

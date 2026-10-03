@@ -61,8 +61,10 @@ Radios bajos a medios; el producto debe sentirse técnico, confiable y operativo
 
 ## Components
 - Capability score: resumen prominente del score global y conteo de activos críticos.
-- Asset table: filas compactas con estado, criticidad y desglose de health.
+- Asset table: filas compactas con estado, criticidad y desglose de health; fila es clicable → pantalla de detalle (router hash `#/activo/{id}`).
+- Score chart: histórico SVG del score total (línea violeta accent, área tenue, umbral 60 en rojo discontinuo, tooltips por punto).
 - Incident list: historial ordenado por fecha con tipo, detección y nota.
+- Ficha técnica: panel de datos estáticos del activo (ubicación, intervalo, criticidad, última actualización).
 - Retry/error state: mensaje claro cuando la API local no responde.
 
 ## Do's and Don'ts
