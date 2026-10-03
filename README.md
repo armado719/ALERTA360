@@ -58,11 +58,13 @@ docs/
 | Ruta | Qué es |
 |---|---|
 | `src/Alerta360.Api/` | Backend ASP.NET Core (C#) + PostgreSQL |
+| `src/Alerta360.Tests/` | Tests xUnit del motor Health Score y notificaciones |
 | `src/frontend/` | Frontend TypeScript + Vite (sin framework — DOM directo) |
 | `src/frontend/DESIGN.md` | **Fuente autoritativa** de tokens visuales (colores, tipografía, componentes) |
 | `App.jsx` | Preview autónomo del dashboard, para validar visual sin flujo Vite/TS |
 | `MEMORY.md` | Memoria de workspace autogenerada (plugin `.remember`) — no editar a mano |
 | `docker-compose.yml` | Solo levanta PostgreSQL (`alerta360-db`) — no levanta frontend ni backend |
+| `.github/workflows/ci.yml` | CI: build + tests backend, build frontend (se activa al subir a GitHub) |
 | `NO BORRAR.txt` | Comandos y credenciales locales de Docker/Postgres ⚠️ ver nota de seguridad |
 
 Para levantar el entorno local (detalle en `docs/archivo/ALERTA360_Nota_Continuidad.md`, aunque obsoleto, sigue siendo válido para comandos):
@@ -71,6 +73,14 @@ Para levantar el entorno local (detalle en `docs/archivo/ALERTA360_Nota_Continui
 docker compose up -d db
 dotnet run --urls "http://localhost:5000"    # en src/Alerta360.Api
 npm.cmd run dev -- --port 5173               # en src/frontend
+```
+
+Verificación (build + tests):
+
+```
+dotnet build src/Alerta360.Api
+dotnet test src/Alerta360.Tests
+npm run build                                 # en src/frontend
 ```
 
 ---

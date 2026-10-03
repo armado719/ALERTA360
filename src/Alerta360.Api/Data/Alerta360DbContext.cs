@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Alerta360.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,6 +16,11 @@ public class Alerta360DbContext(DbContextOptions<Alerta360DbContext> options) : 
     protected override void OnModelCreating(ModelBuilder b)
     {
         b.Entity<Asset>().HasIndex(a => new { a.ClientId, a.ExternalId }).IsUnique();
+        // JsonDocument no tiene mapping nativo fuera de Npgsql; converter a string hace el modelo
+        // portable (tests InMemory) sin cambiar la columna jsonb.
+        b.Entity<TelemetryReading>().Property(t => t.RawValue).HasConversion(
+            v => v == null ? null : v.RootElement.GetRawText(),
+            s => s == null ? null : JsonDocument.Parse(s));
         b.Entity<TelemetryReading>().Property(t => t.RawValue).HasColumnType("jsonb");
         b.Entity<TelemetryReading>().HasIndex(t => new { t.AssetId, t.ReceivedAt });
         b.Entity<HealthScoreSnapshot>().HasIndex(h => new { h.AssetId, h.CalculatedAt });
