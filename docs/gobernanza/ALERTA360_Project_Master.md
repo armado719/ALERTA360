@@ -30,22 +30,64 @@ Plataforma de observabilidad especializada en infraestructura de sistemas de ale
 
 ## FASE 0 — Validación de campo
 **Estado actual: EN EJECUCIÓN (reactivada 2026-09-06 para cerrar faltantes) — checklist aún NO completo**
+**Actualización 2026-10: se abre una 4ª vertical candidata tras la Entrevista #1. Ver §0.1.**
 
 ### Objetivo
 Confirmar con evidencia real (no intuición) qué vertical, qué tipo de activo, y qué protocolo de telemetría tiene el primer cliente piloto.
 
+### Verticales candidatos (4)
+
+| # | Vertical | Descripción |
+|---|---|---|
+| 1 | **Hidroeléctrica** | Operación/generación: embalses, уров, turbinas |
+| 2 | **Minería** | Taludes, sismicidad inducida, voladuras, Instrumentación en mina |
+| 3 | **Puerto** | Sensores ambientales y operacionales en terminal |
+| 4 | **Interventoría / monitoreo geotécnico de obra** *(nuevo — 2026-10)* | Empresa que supervisa y monitorea infraestructura de **terceros** por contrato (interventoría, consultancy de ingeniería, operación por contrato). Presas, túneles, taludes en construcción. |
+
 ### Checklist de salida de esta fase
-- [ ] Mínimo 2 entrevistas completadas en cada uno de los 3 verticales candidatos (hidroeléctrica, minería, puerto) — 6 entrevistas totales
+- [ ] Mínimo 2 entrevistas completadas en cada uno de los 4 verticales candidatos — 8 entrevistas totales
+      *Progreso: 1 de 8 (Entrevista #1 — vertical 4). Ver `docs/fase0-validacion-campo/ALERTA360_Entrevista_01_Registro.md`.*
 - [ ] Matriz comparativa llenada con puntuaciones reales (no estimadas)
+      *Progreso: 0 — todas las celdas vacías. Fuente única: `ALERTA360_Matriz_Comparativa_Plantilla.csv`.*
 - [ ] Vertical seleccionado según la regla de decisión (mayor puntaje total + al menos una historia de "dolor real" con 4-5 puntos)
 - [ ] Activo específico identificado dentro del vertical elegido (ej. "sensores de nivel de embalse", no "todo lo de la hidroeléctrica")
+      *⚠️ Ver §0.2: la Entrevista #1 evidencia que "un único tipo de activo" como premisa de arquitectura necesita confirmación explícita — la detección de "congelado" NO puede ser un umbral global.*
 - [ ] Cliente piloto identificado con nombre y contacto con autoridad de compra
+      *Progreso: 0. La Entrevista #1 fue con un sponsor técnico, no la autoridad de compra.*
 - [ ] Protocolo técnico real de telemetría confirmado (MQTT / HTTP / Modbus / SDI-12 / propietario)
+      *Progreso: parcial. La Entrevista #1 declaró heterogéneo: nube ThingsBoard-like + SCADA local + radio/SMS. Score de accesibilidad 3/5.*
 - [ ] `docs/fase0-validacion-campo/ALERTA360_Checklist_Levantamiento_Tecnico.md` llenado para el piloto elegido (protocolo + volumen/SLO/costo)
 
 ### Documento que gobierna esta fase
 `docs/fase0-validacion-campo/ALERTA360_Protocolo_Validacion_Campo.md` — guion de entrevista, rúbrica, matriz, plantilla de registro.
-`docs/fase0-validacion-campo/ALERTA360_Logistica_Seguimiento_Entrevistas.md` + `docs/fase0-validacion-campo/ALERTA360_Seguimiento_Contactos.csv` — outreach y tracker (meta: 8-10 contactos por vertical).
+`docs/fase0-validacion-campo/ALERTA360_Hoja_de_Campo_Entrevista.md` — versión imprimible para usar durante la llamada.
+`docs/fase0-validacion-campo/ALERTA360_Logistica_Seguimiento_Entrevistas.md` + `docs/fase0-validacion-campo/ALERTA360_Seguimiento_Contactos.csv` — outreach y tracker (meta: 8-10 contactos por vertical, ahora 4 verticales).
+
+### 0.1 — Por qué se abrió la 4ª vertical (2026-10)
+
+**Decisión consciente.** La Entrevista #1 (Juan Carlos Romero, 25/30) mostró que el primer cliente real **no encaja en ninguno de los 3 verticales originales**:
+
+- Habla de *"el cliente"* y de *"la interventoría del cliente"* — no es dueño de la infraestructura.
+- Su motivo de compra es una **glosa contractual del 5%** por falla de niveles de servicio, no responsabilidad legal propia.
+- Se define como *"sponsor técnico"*: especifica y justifica, pero no firma compras (autoridad: Gerente de Proyectos/Director de Operaciones; sobre 10-15k USD, Gerente General).
+
+**Por qué no se forzó bajo "Hidroeléctrica":** el Project Master establece que el vertical se elige **por evidencia de campo**, no por conveniencia de llenado. Etiquetar un consultor como hidroeléctrica es exactamente el error que este documento previene.
+
+**Consecuencia asumida:** más contactos que conseguir (8-10 en 4 verticales = 32-40) y ciclo de decisión más largo. A cambio, el MVP deja de estar construido para un cliente que quizá no existe.
+
+**Diferencia de modelo de negocio** — una interventoría compra ligado a contrato/obra, con dolor **puntual**; un operador compra ligado a su infraestructura, con dolor **continuo**. Si la 4ª vertical gana la matriz, el modelo de precios del §5 del Master Lean (SaaS por activos) queda **invalidado** y debe re-derivarse.
+
+**Ver el análisis completo:** `docs/fase0-validacion-campo/ALERTA360_Riesgos_Entrevista_01.md` §Riesgo 1.
+
+### 0.2 — Evidencia sobre la premisa "un único tipo de activo"
+
+La Entrevista #1 dejó en evidencia que el cliente opera 4 tipos de sensor con comportamientos distintos (piezómetros ~70% de la red, inclinómetros/extensómetros, geófonos, filtración/temperatura), y con transporte heterogéneo (nube, SCADA, radio/SMS).
+
+Su frase: *"No es lo mismo un sensor enterrado a 40 metros de profundidad en una presa, que uno a la intemperie en un talud."*
+
+**Implicación para la arquitectura (Master Lean §3):** la detección de "dato congelado" **NO puede ser un umbral global**. Para un inclinómetro, un valor constante durante 15 días es el comportamiento normal, no una falla — un umbral global lo marcaría `DataUnreliable` y el producto generaría falsos positivos sistemáticos, que es lo que el Master Lean §13.2 identifica como destruyeedor de la confianza del operador.
+
+**Pendiente de decisión en Fase 0:** confirmar con el cliente en la Entrevista #2 si el problema que quiere resolver es "vigilar un tipo de sensor" o "vigilar que lo que me reportan es confiable, sin importar el tipo". Si es lo segundo, el tipo de sensor entra como **parámetro de perfil** (configuración) y no como arquitectura distinta — lo que preserva el MVP de "un tipo" sin violarlo.
 
 ### Regla dura
 **Ningún documento ni código de la Fase 1 en adelante debe tratarse como definitivo mientras este checklist no esté completo.** Los documentos de Fase 1/2 que ya existen (ver abajo) fueron construidos como *plantillas hipotéticas* precisamente por esto.
@@ -164,4 +206,5 @@ Fecha        Fase   Evento
 2026-10-03   1      Auth mínima: API key (X-API-Key) protege /api/dev/* y escrituras; GET dashboard y /health públicos; fail-closed (503 sin key configurada).
 2026-10-03   1      Notificación Telegram real (Bot API) con anti-spam; sin token configurado solo loguea (fail-soft).
 2026-10-03   1      Pantallas detalle activo + histórico: endpoints /api/assets/{id}[/scores|/incidents], feed /api/incidents público; frontend con router hash, gráfico SVG de score y tabla por dimensión.
+2026-10-03   0      ENTREVISTA #1 COMPLETADA (25/30). Juan Carlos Romero, sponsor técnico, ~45 estaciones / 350-400 sensores (piezómetros, inclinómetros, ext., geófonos). Dime 5/5, Activos 5/5, Observabilidad 5/5, Protocolo 3/5, Presupuesto 3/5, Disposición 4/5. Hallazgo central: "un sensor sin batería se ve igual que uno midiendo condición crítica" + caso real de piezómetro congelado 3 días detectado por el cliente (4-5k USD, glosa 5%). PENDIENTE: confirmar organización — parece INTERVENTORÍA de obra, no operador; eso no encaja en los 3 verticales del checklist. 2 referidos obtenidos (Laura Gómez hidro, Roberto mina El Roble). Re-análisis 2026-10-03: verificado scoring 25/30 contra transcripción original; añadido contraste de brechas con el MVP al Registro (frescura fija 5/10 min incompatible con sensores horarios, ingesta SMS/radio, estado dormido, escala 20→400). Fecha exacta de la llamada: pendiente (la transcripción no la incluye). Registro: docs/fase0-validacion-campo/ALERTA360_Entrevista_01_Registro.md
 ```
