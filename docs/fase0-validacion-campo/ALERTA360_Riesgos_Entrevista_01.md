@@ -2,7 +2,12 @@
 
 *Generado 2026-10 tras la primera entrevista (25/30). Cada riesgo tiene: qué pasó, por qué importa, opciones con recomendación, y qué decisión dispara cuál.*
 
-**Estado: los 3 están ABIERTOS — requieren decisión del equipo, no se resuelven solos.**
+**Estado de las decisiones (2026-10):**
+- **Riesgo 1 — RESUELTO.** Se adoptó la Opción B: se abrió la 4ª vertical *Interventoría / monitoreo geotécnico de obra*. Registrado en `ALERTA360_Project_Master.md` §0.1. El resto de este análisis se conserva como registro de la decisión tomada.
+- **Riesgo 2 — ABIERTO.** Se cambió la recomendación: **no fijar piezómetro todavía**. Ver §Riesgo 2 más abajo y Project Master §0.2.
+- **Riesgo 3 — ABIERTO.** Se mantiene la Opción A (registrar, no actuar).
+
+**Riesgo 1 (histórico — decisión tomada).**
 
 ---
 
@@ -107,7 +112,11 @@ Si se construye el MVP para un solo tipo y el cliente real tiene cuatro, el Heal
 
 ### Recomendación
 
-**Opción A, pero convertir el Riesgo 2 en el objetivo de la Entrevista #2.** La pregunta técnica que responde todo: *"si tuvieras que resolver solo un tipo de sensor primero, ¿cuál te habría evitado el incidente del talud?"* — y si la respuesta es "ninguno, el que nos habría avisado es el que detecta cuándo un sensor está mintiendo, sin importar el tipo", eso abre una vía mejor que el piezómetro.
+**OPCIÓN ELEGIDA (2026-10) — no fijar el activo todavía; convertir el Riesgo 2 en el objetivo de la Entrevista #2.**
+
+Motivo del cambio respecto a la recomendación original ("fijar piezómetro"): la seed data del MVP ya usa **"Inclinómetro Talud"** como activos de ejemplo, y el incidente reportado por el cliente fue en un talud con inclinómetros/piezómetros. Fijar piezómetro ahora obligaría a reescribir el seed y la especificación de Fase 1 sin evidencia que lo exija.
+
+La pregunta para la Entrevista #2: La pregunta técnica que responde todo: *"si tuvieras que resolver solo un tipo de sensor primero, ¿cuál te habría evitado el incidente del talud?"* — y si la respuesta es "ninguno, el que nos habría avisado es el que detecta cuándo un sensor está mintiendo, sin importar el tipo", eso abre una vía mejor que el piezómetro.
 
 Esa segunda formulación es interesante: el cliente no pide "vigilar piezómetros". Pide "vigilar que lo que me reportan es confiable". Si la próxima entrevista confirma esa formulación, el motor de Health Score debe ser **por dimensiones de calidad** (frescura, plausibilidad, consistencia) y **el tipo de sensor entra como parámetro del perfil**, no como una arquitectura distinta. Eso resolvería la heterogeneidad sin violar el MVP.
 
@@ -168,8 +177,8 @@ Si el modelo de precios del MVP es incompatible con esto, no es un detalle comer
 
 | # | Riesgo | Recomendación | Para decidir necesitas |
 |---|---|---|---|
-| 1 | Vertical no coincide con el ICP del Master | **Abrir 4ª vertical** (interventoría / monitoreo geotécnico de obra) y documentar el cambio | Confirmar organización de Juan Carlos (¿quién lo contrató? ¿a quién le responde?) |
-| 2 | Heterogeneidad de activos rompe "un solo tipo" | **Fijar piezómetro** (70% de la red) + corregir umbrales por tipo; reformular la pregunta al cliente en la Entrevista #2 | Respuesta del cliente a "¿un solo sensor primero, cuál?" |
+| 1 | Vertical no coincide con el ICP del Master | ~~Abrir 4ª vertical~~ **HECHO 2026-10** — registrada en Project Master §0.1 | *(resuelto)* |
+| 2 | Heterogeneidad de activos rompe "un solo tipo" | **No fijar activo todavía.** Llevar la pregunta a la Entrevista #2 y corregir umbrales por tipo mientras tanto (Project Master §0.2) | Respuesta a "¿un solo sensor primero, cuál?" **o** "¿lo que quiere es vigilar que lo reportado sea confiable, sin importar el tipo?" |
 | 3 | Presupuesto exige ROI previo | **Registrar, no actuar.** Agregar "cifras base del cliente" al entregable del piloto | Una entrevista más del mismo sector |
 
 ---

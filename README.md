@@ -24,10 +24,13 @@ docs/
 │   └── ALERTA360_Project_Master_Lean.md     (complemento detalle Fase 1)
 ├── fase0-validacion-campo/        ← FASE 0: validar problema/cliente/vertical
 │   ├── ALERTA360_Protocolo_Validacion_Campo.md    (guion + rúbrica + decisión)
+│   ├── ALERTA360_Hoja_de_Campo_Entrevista.md      (hoja imprimible para la llamada)
 │   ├── ALERTA360_Logistica_Seguimiento_Entrevistas.md  (outreach + mensajes)
 │   ├── ALERTA360_Checklist_Levantamiento_Tecnico.md    (ficha técnica por piloto)
 │   ├── ALERTA360_Seguimiento_Contactos.csv             (tracker de outreach)
-│   └── ALERTA360_Matriz_Comparativa_Plantilla.csv      (fuente única de la matriz)
+│   ├── ALERTA360_Matriz_Comparativa_Plantilla.csv      (fuente única de la matriz)
+│   ├── ALERTA360_Entrevista_01_Registro.md             (entrevista #1: 25/30)
+│   └── ALERTA360_Riesgos_Entrevista_01.md             (3 riesgos abiertos + recomendaciones)
 ├── fase1-mvp/                     ← FASE 1: desarrollo del MVP
 │   ├── ALERTA360_Especificacion_Funcional_MVP_Plantilla.md
 │   └── ALERTA360_Arquitectura_Tecnica_Detallada.md
@@ -44,7 +47,7 @@ docs/
 
 | Fase | Estado |
 |---|---|
-| **Fase 0** — Validación de campo | **EN EJECUCIÓN** — checklist NO completo (faltan 6 entrevistas + validación técnica) |
+| **Fase 0** — Validación de campo | **EN EJECUCIÓN** — checklist NO completo (falta 7 de 8 entrevistas + validación técnica) |
 | **Fase 1** — MVP | Técnicamente completa con datos **simulados** — telemetría real bloqueada hasta cerrar Fase 0 |
 | **Fase 2** — Piloto | CERRADA SIN EJECUTAR — sin cliente piloto no hay piloto posible |
 | **Fase 3+** — Visión largo plazo | Fuera de alcance hasta nueva decisión |

@@ -1,7 +1,7 @@
 # ALERTA360 — Protocolo de Validación de Campo
 *Documento operativo — complementa al Project Master Lean, sección 4.1*
 
-**Propósito de este documento:** ejecutar el gate "Validación de Campo → Vertical Seleccionado" de forma consistente entre los tres verticales (hidroeléctrica, minería, puerto), sin sesgo, y con criterios de decisión definidos ANTES de hablar con nadie — para no elegir el vertical por simpatía o por quién contestó primero.
+**Propósito de este documento:** ejecutar el gate "Validación de Campo → Vertical Seleccionado" de forma consistente entre los CUATRO verticales (hidroeléctrica, minería, puerto, interventoría/monitoreo geotécnico de obra — esta última abierta en 2026-10, ver Project Master §0.1), sin sesgo, y con criterios de decisión definidos ANTES de hablar con nadie — para no elegir el vertical por simpatía o por quién contestó primero.
 
 **Regla de oro de todo el protocolo:** no se menciona ALERTA360 como producto durante la entrevista. Se investiga cómo trabajan hoy. Si preguntan "¿y esto para qué es?", la respuesta es honesta pero neutra: *"Estamos investigando cómo los operadores de infraestructura crítica supervisan la salud de sus sistemas de monitoreo, antes de decidir si vale la pena construir algo."*
 
@@ -11,7 +11,9 @@
 
 - **A quién buscar:** no al gerente general — a quien opera o supervisa directamente el monitoreo (jefe de mantenimiento, ingeniero de instrumentación, jefe de SCADA/automatización, coordinador HSE). Es quien vive el dolor, no quien firma el presupuesto (a esa persona se llega después, si el dolor se confirma).
 - **Cómo conseguir la conversación:** contacto directo/referido es mejor que formulario o encuesta fría. 20-30 minutos de llamada o presencial, no un cuestionario por escrito — las respuestas por escrito pierden la anécdota, que es lo más valioso.
-- **Meta mínima de esta ronda:** al menos 2 conversaciones por vertical (6 en total) antes de comparar. Una sola conversación por vertical no es evidencia, es anécdota.
+- **Meta mínima de esta ronda:** al menos 2 conversaciones por vertical antes de comparar. Una sola conversación por vertical no es evidencia, es anécdota.
+
+**Total: 8 entrevistas (4 verticales × 2).** Ver `ALERTA360_Project_Master.md` §0.1 — la 4ª vertical (Interventoría / monitoreo geotécnico de obra) se abrió en 2026-10 tras la Entrevista #1.
 
 ---
 

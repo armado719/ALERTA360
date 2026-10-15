@@ -117,7 +117,7 @@ El checklist de Fase 0 define tres verticales candidatas: **hidroeléctrica, min
 - Si el piloto real es con una interventoría, el **ICP del Master Lean §4 no coincide** ("operador privado de infraestructura crítica"). Es un cliente distinto, posiblemente con más dolor (obra en construcción, presión contractual, glosas) pero también con menos autoridad y menos datos.
 - El referido de **Roberto en la mina El Roble** sí es un operador-style, y ahí encaja mejor el perfil de "operación minera" (taludes, sismicidad inducida).
 
-**Antes de llenar la matriz:** confirmar organización y cargo exacto de Juan Carlos, y decidir si se abre una **cuarta vertical候选 (interventoría de obra / monitoreo de construcción geotécnica)** o si esta entrevista se registra bajo uno de los tres verticales existentes.
+**RESUELTO 2026-10:** se abrió la **cuarta vertical** — *Interventoría / monitoreo geotécnico de obra*. Registrada en `ALERTA360_Project_Master.md` §0.1 y cargada en la matriz (`Interventoria_E1` = 25/30). Pendiente solo confirmar el nombre de la organización y el cargo exacto del entrevistado.
 
 ---
 
@@ -140,7 +140,7 @@ El checklist de Fase 0 define tres verticales candidatas: **hidroeléctrica, min
 
 ### Límites de este análisis
 
-- **Un solo cliente y aún sin vertical asignado** (¿interventoría u operador?). No se toca la matriz comparativa: el Protocolo §6 exige 6 entrevistas antes de comparar.
+- **Solo 1 de 8 entrevistas.** El Protocolo exige 8 (4 verticales × 2) antes de comparar entre verticales. La E1 ya está cargada en la matriz; faltan 7.
 - El scoring 25/30 se verificó contra la rúbrica; **Observabilidad 5/5 es discutible** (rúbrica 3 = "tienen algo con huecos": tienen plataforma nube que "funciona bastante bien" + SCADA). Se mantiene 5 por la fracción radio/SMS consolidada a mano, pero revisar al promediar verticales.
 
 ---

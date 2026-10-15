@@ -2,6 +2,8 @@
 *Complementa al Protocolo de Validación de Campo (que cubre el guion y la rúbrica). Este documento cubre CÓMO conseguir, agendar y dar seguimiento a las conversaciones.*
 
 > Estado: ACTIVA (reactivada 2026-09-06 para cerrar Fase 0). Tracker: `ALERTA360_Seguimiento_Contactos.csv` (esta misma carpeta).
+>
+> **Actualización 2026-10:** son **4 verticales**, no 3. Meta: 8-10 contactos por vertical = **32-40 en total**. Se agregó *Interventoría / monitoreo geotécnico de obra* (ver Project Master §0.1) — buscar "interventoría de obras", "consultoría geotécnica", "supervisión de obra", "jefe de instrumentación de interventoría".
 
 ---
 
@@ -10,9 +12,10 @@
 - **LinkedIn** — buscar cargos: "jefe de instrumentación", "coordinador SCADA", "jefe de mantenimiento", "coordinador HSE", "ingeniero de automatización" + nombre de empresas del vertical.
   - Hidroeléctrica: Isagen, EPM, Celsia, y generadoras regionales más pequeñas.
   - Minería: operaciones medianas/pequeñas suelen responder más que las grandes (menos filtros corporativos).
-  - Puerto: Sociedad Portuaria de Buenaventura, Cartagena, Santa Marta, terminales privadas.
+  - Puerto: Sociedad Portuaria de Buenaventura, Cartagena, Santa Marta, terminals privadas.
+  - **Interventoría / monitoreo geotécnico de obra** *(nuevo)*: empresas de interventoría y consultancy de ingeniería con contrato de monitoreo de obra. Cargos: "jefe de instrumentación de interventoría", "coordinador de geotécnica", "jefe de monitoreo", "supervisor de instrumentación". Son las que redactan los informes semanales con lectura manual — el perfil exacto que reportó el dolor de "dato congelado no detectado".
 - **Gremios como puente:** ACOLGEN (generación hidroeléctrica), ACIEM/ANDI (industria, minería), asociaciones portuarias regionales — a veces tienen foros o directorios donde preguntar sin sonar a venta fría.
-- **Referidos > contacto en frío, siempre.** Red personal, excompañeros, contactos del sector hidrocarburos/UNAD que puedan conectar con alguien de los 3 verticales.
+- **Referidos > contacto en frío, siempre.** Red personal, excompañeros, contactos del sector hidrocarburos/UNAD que puedan conectar con alguien de los 4 verticales.
 - Enviar a 8-10 contactos por vertical **a la vez**, no uno por uno esperando respuesta — la tasa de respuesta en frío suele ser baja (1 de cada 10-15 es normal, no es señal de que el proyecto esté mal).
 
 ---

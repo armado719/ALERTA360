@@ -67,7 +67,7 @@ Explícitamente pospuesto para después del piloto: municipios, SAT públicos, e
 
 ### 4.1 Validación de campo — se hace ANTES de elegir vertical
 
-Objetivo: conseguir conversaciones reales (no encuestas) con personas que operen infraestructura de monitoreo en los tres verticales candidatos a la vez, y elegir el vertical del piloto según quién muestre mayor dolor, mayor cantidad de activos, peor observabilidad actual, protocolos más accesibles, presupuesto y disposición real a pilotar.
+Objetivo: conseguir conversaciones reales (no encuestas) con personas que operen infraestructura de monitoreo en los cuatro verticales candidatos a la vez (hidroeléctrica, minería, puerto, interventoría/monitoreo geotécnico de obra — el 4º abierto en 2026-10, ver Project Master §0.1), y elegir el vertical del piloto según quién muestre mayor dolor, mayor cantidad de activos, peor observabilidad actual, protocolos más accesibles, presupuesto y disposición real a pilotar.
 
 **Meta mínima: 2 conversaciones por vertical = 6 en total** (coincide con el Protocolo de Validación de Campo — ver sección 2, este número no debe divergir entre documentos).
 
