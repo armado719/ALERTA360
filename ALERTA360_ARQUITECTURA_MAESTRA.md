@@ -1,8 +1,8 @@
 # ALERTA360 — Plataforma Global de Alertas Tempranas para Desastres Naturales
 
-**Versión:** 1.0 (Arquitectura Maestra)  
-**Fecha:** 2026  
-**Estado:** En diseño  
+**Versión:** 1.1 (actualizada)  
+**Fecha:** 2026-10-15  
+**Estado:** Implementación en progreso — Fase 1-3 infraestructura completada  
 **Propósito:** Documento de control de fases. Gobierna el avance del proyecto.
 
 ---
@@ -94,13 +94,14 @@ Crear la **plataforma unificada de alertas tempranas para desastres naturales** 
 - **HTTP:** Axios
 
 ### Backend
-- **Runtime:** Node.js (Express.js)
-- **Lenguaje:** TypeScript
-- **Base de datos:** PostgreSQL (eventos, usuarios, preferencias)
-- **Cache:** Redis (datos de alertas en tiempo real)
-- **Colas:** Bull (procesamiento de ingesta)
-- **ORM:** Prisma
-- **API Rest:** Express + OpenAPI/Swagger
+|- **Runtime:** Node.js + Fastify (high-performance framework)
+|- **Lenguaje:** TypeScript
+|- **Base de datos:** PostgreSQL (eventos, usuarios, preferencias)
+|- **Cache:** Redis (datos de alertas en tiempo real)
+|- **Colas:** Bull (procesamiento de ingesta)
+|- **ORM:** Prisma
+|- **Plugins Fastify:** @fastify/cors, @fastify/jwt, @fastify/websocket
+|- **API Rest:** Fastify + Swagger (@fastify/swagger)
 
 ### DevOps
 - **Containerización:** Docker + Docker Compose
@@ -122,64 +123,90 @@ Crear la **plataforma unificada de alertas tempranas para desastres naturales** 
 
 ```
 User
-├── id (uuid, PK)
-├── email (string, unique)
-├── username (string, unique)
-├── password_hash (string)
-├── preferences (jsonb) {
-│   "alert_radius_km": 50,
-│   "disaster_types": ["earthquake", "flood", "storm"],
-│   "push_enabled": true,
-│   "email_enabled": true
-│ }
-├── created_at
-├── updated_at
+├── id (String, PK, uuid)
+├── email (String, unique)
+├── username (String, unique)
+├── passwordHash (String)
+├── createdAt (DateTime)
+├── updatedAt (DateTime)
+├── locations (Location[])
+├── notifications (Notification[])
+└── preferences (UserPreference, 1:1)
+
+UserPreference (preferencias de alerta del usuario)
+├── id (String, PK, uuid)
+├── userId (String, unique, FK → User)
+├── alertRadiusKm (Int, default: 50)
+├── disasterTypes (String[], default: ["earthquake", "storm", "flood", "rain"])
+├── pushEnabled (Boolean, default: true)
+├── emailEnabled (Boolean, default: true)
+├── smsEnabled (Boolean, default: false)
+├── createdAt (DateTime)
+└── updatedAt (DateTime)
 
 Location (zonas de interés del usuario)
-├── id (uuid, PK)
-├── user_id (FK → User)
-├── name (string) // "Mi casa", "Trabajo", etc
-├── latitude (decimal)
-├── longitude (decimal)
-├── radius_km (int) // rango de alerta
-├── created_at
+├── id (String, PK, uuid)
+├── userId (String, FK → User)
+├── user (User)
+├── name (String) // "Mi casa", "Trabajo", etc
+├── latitude (Float)
+├── longitude (Float)
+├── radiusKm (Int, default: 50) // rango de alerta
+├── createdAt (DateTime)
+├── updatedAt (DateTime)
+├── notifications (Notification[])
+└── @@index([userId])
 
 DisasterEvent (evento detectado)
-├── id (uuid, PK)
-├── type (enum: earthquake | storm | flood | extreme_rain | landslide | volcanic | hurricane)
-├── source (enum: usgs | noaa | nasa | ingv | custom)
-├── external_id (string) // ID de la fuente original
-├── latitude (decimal)
-├── longitude (decimal)
-├── magnitude (decimal, nullable) // para terremotos
-├── intensity (int 1-10, nullable) // intensidad percibida
-├── description (text)
-├── raw_data (jsonb) // payload completo de la API origen
-├── confidence (int 0-100) // qué tan seguro estamos del evento
-├── occurred_at (timestamp)
-├── detected_at (timestamp) // cuándo lo procesó ALERTA360
-├── updated_at (timestamp) // última actualización
-├── is_active (boolean) // si sigue siendo relevante
+├── id (String, PK, uuid)
+├── type (String) // earthquake, storm, flood, rain, landslide, volcanic, hurricane
+├── source (String) // usgs, noaa, nasa, custom
+├── externalId (String, nullable) // ID de la fuente original
+├── latitude (Float)
+├── longitude (Float)
+├── magnitude (Float, nullable) // para terremotos
+├── intensity (Int, nullable) // intensidad percibida (1-10)
+├── title (String)
+├── description (String)
+├── severity (String) // low, medium, high, critical
+├── occurredAt (DateTime)
+├── detectedAt (DateTime, default: now())
+├── updatedAt (DateTime)
+├── rawData (Json, nullable) // payload completo de la API origen
+├── isActive (Boolean, default: true)
+├── notifications (Notification[])
+├── @@index([type])
+├── @@index([occurredAt])
+├── @@index([isActive])
+└── @@index([latitude, longitude])
 
-AlertNotification (notificación enviada)
-├── id (uuid, PK)
-├── user_id (FK → User)
-├── event_id (FK → DisasterEvent)
-├── location_id (FK → Location, nullable)
-├── distance_km (decimal) // distancia del evento a zona de interés
-├── channel (enum: push | email | sms)
-├── sent_at (timestamp)
-├── delivered_at (timestamp, nullable)
-├── read_at (timestamp, nullable)
-├── status (enum: pending | sent | delivered | failed)
+Notification (notificación enviada)
+├── id (String, PK, uuid)
+├── userId (String, FK → User)
+├── user (User)
+├── eventId (String, FK → DisasterEvent)
+├── event (DisasterEvent)
+├── locationId (String, nullable, FK → Location)
+├── location (Location, nullable)
+├── distanceKm (Float)
+├── channel (String) // push, email, sms
+├── status (String) // pending, sent, delivered, failed
+├── sentAt (DateTime, default: now())
+├── deliveredAt (DateTime, nullable)
+├── readAt (DateTime, nullable)
+├── @@index([userId])
+├── @@index([eventId])
+└── @@index([status])
 
 AuditLog (trazabilidad)
-├── id (uuid, PK)
-├── user_id (FK → User, nullable)
-├── action (string)
-├── resource (string)
-├── metadata (jsonb)
-├── created_at
+├── id (String, PK, uuid)
+├── userId (String, nullable, FK → User)
+├── action (String)
+├── resource (String)
+├── metadata (Json, nullable)
+├── createdAt (DateTime)
+├── @@index([userId])
+└── @@index([createdAt])
 ```
 
 ---
@@ -435,9 +462,13 @@ AuditLog (trazabilidad)
 ## 📋 Registro de Avance
 
 ### Estado General del Proyecto
-**Fase actual:** DISEÑO (Pre-Fase 0)  
-**Porcentaje completado:** 0%  
-**Última actualización:** 2026
+**Fase actual:** FASE 3 (Infraestructura de Producción) — Backend en Fase 2 (infraestructura base completada)
+**Porcentaje completado (infraestructura):**
+- Fase 1 (Frontend MVP): 100% ✅
+- Fase 2 (Backend infra): 100% ✅ | Fase 2 (Features): 0% ⏳
+- Fase 3 (Prod infra): 100% ✅ | Fase 3 (Deploy real): 0% ⏳
+- Fase 4 (Estructura): 100% ✅ | Fase 4 (Desarrollo): 0% ⏳
+**Última actualización:** 2026-10-15
 
 ### Timeline Estimado
 | Fase | Inicio | Fin | Duración |
@@ -449,25 +480,27 @@ AuditLog (trazabilidad)
 | **TOTAL** | - | - | **16 semanas (~4 meses)** |
 
 ### Hitos Clave
-- [ ] **Hito 1:** Fase 0 completada (Semana 2)
-- [ ] **Hito 2:** Backend con ingesta USGS + NOAA (Semana 4)
-- [ ] **Hito 3:** Frontend con mapa interactivo (Semana 8)
-- [ ] **Hito 4:** Alertas en tiempo real funcionando (Semana 8)
-- [ ] **Hito 5:** MVP en producción (Semana 16)
+- [x] **Hito 1:** Fase 0 documentada (validación, stack, plan) — 2026-10-15
+- [x] **Hito 2:** Backend infra con schema Prisma (6 modelos) + Docker + health check — 2026-10-15
+- [x] **Hito 3:** Frontend MVP con mapa Leaflet + Dashboard interactivo — 2026-10-15
+- [ ] **Hito 4:** Ingesta real USGS/NOAA + alertas en tiempo real — PENDIENTE (Fase 1)
+- [ ] **Hito 5:** MVP en producción (deploy real) — PENDIENTE (Fase 3)
 
 ---
 
 ## 📞 Contacto & Gobernanza
 
-**Propietario del Producto:** Tu nombre  
+**Propietario del Producto:** Armando Ramírez Cardozo  
+**Email:** arc.fullstack30@gmail.com  
+**GitHub:** https://github.com/armado719/ALERTA360  
 **Equipo técnico:** Asignado  
-**Decisiones clave se toman:** En reuniones semanales  
+**Decisiones clave se toman:** En reuniones semanales
 
 **Regla dura:** 
 > No se avanza de fase hasta que el checklist de salida esté 100% completo con evidencia real. Sin checklist completado, no hay progresión.
 
 ---
 
-**Versión del documento:** 1.0  
-**Próxima revisión:** Después de Fase 0  
-**Historial de cambios:** [Pendiente de agregar cambios futuros]
+**Versión del documento:** 1.1 (actualizada)  
+**Próxima revisión:** Después de Fase 1 completa  
+**Historial de cambios:** v1.0 (diseño original) → v1.1 (alineado a implementación real: stack Fastify, modelo UserPreference, estado actualizado, contacto corregido)

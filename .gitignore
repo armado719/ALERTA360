@@ -36,6 +36,9 @@ coverage/
 .cache/
 .turbo/
 
+# Vite
+*.timestamp-*.mjs
+
 # Backend
 backend/node_modules/
 backend/dist/
