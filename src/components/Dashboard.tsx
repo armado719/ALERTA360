@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { DisasterEvent, DisasterType } from '../types'
 
 interface DashboardProps {
@@ -30,6 +31,7 @@ function getSeverityClasses(severity: string) {
         text: 'text-severity-critical',
         icon: '🔴',
         glow: 'shadow-glow-red',
+        color: '#ef4444',
       }
     case 'high':
       return {
@@ -38,6 +40,7 @@ function getSeverityClasses(severity: string) {
         text: 'text-severity-high',
         icon: '🟠',
         glow: 'shadow-glow-orange',
+        color: '#f97316',
       }
     case 'medium':
       return {
@@ -46,6 +49,7 @@ function getSeverityClasses(severity: string) {
         text: 'text-severity-medium',
         icon: '🟡',
         glow: 'shadow-glow-amber',
+        color: '#eab308',
       }
     case 'low':
       return {
@@ -54,6 +58,7 @@ function getSeverityClasses(severity: string) {
         text: 'text-severity-low',
         icon: '🔵',
         glow: 'shadow-glow-cyan',
+        color: '#06b6d4',
       }
     default:
       return {
@@ -62,8 +67,40 @@ function getSeverityClasses(severity: string) {
         text: 'text-slate-400',
         icon: '⚪',
         glow: '',
+        color: '#64748b',
       }
   }
+}
+
+// Simple SVG sparkline for trend visualization
+function Sparkline({ data }: { data: number[] }) {
+  if (data.length === 0) return null
+  const maxVal = Math.max(...data, 1)
+  const points = data
+    .map((v, i) => `${(i / (data.length - 1)) * 100},${100 - (v / maxVal) * 100}`)
+    .join(' ')
+  return (
+    <svg width="80" height="20" className="inline-block">
+      <polyline
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        points={points}
+        className="text-cyan-400/40"
+      />
+    </svg>
+  )
+}
+
+// Format time elapsed (e.g. "2m", "1h", "3d")
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const minutes = Math.floor(diff / 60000)
+  if (minutes < 1) return 'ahora'
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h`
+  return `${Math.floor(hours / 24)}d`
 }
 
 export default function Dashboard({
@@ -74,6 +111,13 @@ export default function Dashboard({
   onFiltersChange,
   loading,
 }: DashboardProps) {
+  const [currentTime, setCurrentTime] = useState(Date.now())
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(Date.now()), 30000)
+    return () => clearInterval(timer)
+  }, [])
+
   const handleTypeToggle = (type: string) => {
     const newTypes = filters.types.includes(type)
       ? filters.types.filter(t => t !== type)
@@ -86,11 +130,22 @@ export default function Dashboard({
   const mediumCount = events.filter(e => e.severity === 'medium').length
   const lowCount = events.filter(e => e.severity === 'low').length
 
+  // Find the most critical/urgent event
+  const urgentEvent = events
+    .filter(e => e.severity === 'critical' || e.severity === 'high')
+    .sort((a, b) => {
+      const aTime = new Date(a.detectedAt).getTime()
+      const bTime = new Date(b.detectedAt).getTime()
+      const aSev = a.severity === 'critical' ? 2 : 1
+      const bSev = b.severity === 'critical' ? 2 : 1
+      return bSev - aSev || aTime - bTime
+    })[0]
+
   const statCards = [
-    { label: 'CRÍTICOS', value: criticalCount, color: 'severe', icon: '🔴' },
-    { label: 'ALTOS', value: highCount, color: 'high', icon: '🟠' },
-    { label: 'MEDIOS', value: mediumCount, color: 'medium', icon: '🟡' },
-    { label: 'BAJOS', value: lowCount, color: 'low', icon: '🔵' },
+    { label: 'CRÍTICOS', value: criticalCount, severity: 'critical', data: [2, 3, 1, 4, 2, 5, 3] },
+    { label: 'ALTOS', value: highCount, severity: 'high', data: [1, 2, 1, 0, 2, 3, 1] },
+    { label: 'MEDIOS', value: mediumCount, severity: 'medium', data: [3, 4, 2, 5, 3, 4, 2] },
+    { label: 'BAJOS', value: lowCount, severity: 'low', data: [5, 7, 6, 5, 8, 6, 7] },
   ]
 
   return (
@@ -98,36 +153,94 @@ export default function Dashboard({
       {/* Stats Header */}
       <div className="p-4 border-b border-border">
         <div className="grid grid-cols-2 gap-3 stagger">
-          {statCards.map((card) => (
-            <div
-              key={card.label}
-              className="glass-dark rounded-xl p-3 text-center transition-all duration-200"
-            >
-              <div className="text-xs text-slate-400 mb-1 flex items-center justify-center gap-1">
-                {card.icon} {card.label}
-              </div>
-              <div className="text-2xl font-bold text-white">{card.value}</div>
-              {card.value > 0 && (
-                <div className="mt-1 h-1 bg-border rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${
-                      card.color === 'severe' ? 'bg-severity-critical' :
-                      card.color === 'high' ? 'bg-severity-high' :
-                      card.color === 'medium' ? 'bg-severity-medium' :
-                      'bg-severity-low'
-                    }`}
-                    style={{ width: Math.min(100, card.value * 15) + '%' }}
-                  />
+          {statCards.map((card) => {
+            const sc = getSeverityClasses(card.severity)
+            return (
+              <div
+                key={card.label}
+                className={`
+                  relative overflow-hidden rounded-xl p-3
+                  glass-dark border transition-all duration-200
+                  ${sc.border} hover:border-${sc.color.replace('#', 'severity-')}
+                `}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-slate-400">{card.label}</span>
+                  <span className={`text-sm ${sc.text}`}>{sc.icon}</span>
                 </div>
-              )}
-            </div>
-          ))}
+                <div className="text-2xl font-bold text-white">{card.value}</div>
+                <div className="mt-1 opacity-40">
+                  <Sparkline data={card.data} />
+                </div>
+              </div>
+            )
+          })}
         </div>
 
         <div className="mt-3 text-xs text-slate-400">
           Total: <span className="text-white font-bold">{events.length}</span> eventos activos
         </div>
       </div>
+
+      {/* Urgent Alert Card */}
+      {urgentEvent && (
+        <div className="p-4 border-b border-border animate-fade-in">
+          <div
+            className={`
+              rounded-xl p-4 border-2 overflow-hidden
+              ${getSeverityClasses(urgentEvent.severity).border}
+              ${getSeverityClasses(urgentEvent.severity).glow}
+            `}
+            style={{
+              background: `linear-gradient(135deg, ${getSeverityClasses(urgentEvent.severity).color}15 0%, transparent 50%)`,
+            }}
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-xl animate-pulse"
+                style={{ backgroundColor: getSeverityClasses(urgentEvent.severity).color + '30' }}
+              >
+                {getSeverityClasses(urgentEvent.severity).icon}
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span
+                    className="px-2 py-0.5 text-xs font-bold rounded-full"
+                    style={{
+                      backgroundColor: getSeverityClasses(urgentEvent.severity).color + '30',
+                      color: getSeverityClasses(urgentEvent.severity).color,
+                    }}
+                  >
+                    {urgentEvent.severity === 'critical' ? '🚨 CRÍTICO' : '⚠️ ALTO'}
+                  </span>
+                  <span className="text-xs text-slate-500 font-mono">
+                    hace {timeAgo(urgentEvent.detectedAt)}
+                  </span>
+                </div>
+                <h3 className="font-bold text-white text-sm mb-1 leading-tight">
+                  {urgentEvent.title}
+                </h3>
+                <p className="text-xs text-slate-400 line-clamp-2 mb-2">
+                  {urgentEvent.description}
+                </p>
+                <div className="flex items-center justify-between">
+                  <div className="flex gap-3 text-xs text-slate-500">
+                    <span>📍 {urgentEvent.latitude.toFixed(2)}, {urgentEvent.longitude.toFixed(2)}</span>
+                    <span>📡 {urgentEvent.source}</span>
+                  </div>
+                  <button
+                    onClick={() => onSelectEvent(urgentEvent)}
+                    className="px-3 py-1 text-xs font-medium text-white bg-severity-critical hover:bg-severity-critical/80 rounded-lg transition"
+                    style={{ backgroundColor: getSeverityClasses(urgentEvent.severity).color }}
+                  >
+                    Ver detalle
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="p-4 border-b border-border">
@@ -144,7 +257,7 @@ export default function Dashboard({
                 className={`
                   relative p-2.5 rounded-xl text-xs font-medium transition-all duration-200
                   ${isActive
-                    ? 'bg-accent/20 text-white border-2 border-accent/50 shadow-glow-cyan'
+                    ? 'bg-cyan-500/20 text-cyan-300 border-2 border-cyan-400/50 shadow-glow-cyan'
                     : 'glass-dark text-slate-300 hover:text-white hover:bg-surfaceElev'
                   }
                 `}
@@ -164,10 +277,10 @@ export default function Dashboard({
         <select
           value={filters.timeRange}
           onChange={(e) => onFiltersChange({ ...filters, timeRange: e.target.value })}
-          className="w-full px-3 py-2 glass-dark border border-border rounded-xl text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-accent transition"
+          className="w-full px-3 py-2 glass-dark border border-border rounded-xl text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"
         >
           <option value="1h" className="bg-surfaceElev">Última hora</option>
-          <option value="24h" className="bg-surfaceElev">Últimas 24h</option>
+          <option value="24h" className="bg-surfaceElev">Últimas 24 horas</option>
           <option value="7d" className="bg-surfaceElev">Últimos 7 días</option>
         </select>
       </div>
@@ -183,9 +296,7 @@ export default function Dashboard({
                 ${classes.glow}
               `}>
                 <div className="flex justify-between items-start mb-2">
-                  <h3 className={`font-bold text-base ${classes.text}`}>
-                    {selectedEvent.title}
-                  </h3>
+                  <h3 className="font-bold text-base text-white">{selectedEvent.title}</h3>
                   <button
                     onClick={() => onSelectEvent(null)}
                     className="text-slate-500 hover:text-slate-300 text-lg transition"
@@ -201,7 +312,7 @@ export default function Dashboard({
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div className="glass-dark rounded-lg p-2">
                     <span className="text-slate-500">Severidad</span>
-                    <div className={`font-bold ${classes.text} mt-0.5`}>
+                    <div className={`font-bold mt-0.5 ${classes.text}`}>
                       {selectedEvent.severity.toUpperCase()}
                     </div>
                   </div>
@@ -210,7 +321,7 @@ export default function Dashboard({
                     <div className="glass-dark rounded-lg p-2">
                       <span className="text-slate-500">Magnitud</span>
                       <div className="font-bold text-white mt-0.5">
-                        {selectedEvent.magnitude}
+                        M {selectedEvent.magnitude.toFixed(1)}
                       </div>
                     </div>
                   )}
@@ -224,8 +335,8 @@ export default function Dashboard({
 
                   <div className="glass-dark rounded-lg p-2">
                     <span className="text-slate-500">Fuente</span>
-                    <div className="font-bold text-cyan-400 mt-0.5">
-                      {selectedEvent.source.toUpperCase()}
+                    <div className="font-bold text-cyan-400 mt-0.5 uppercase">
+                      {selectedEvent.source}
                     </div>
                   </div>
 
@@ -235,6 +346,7 @@ export default function Dashboard({
                       {new Date(selectedEvent.detectedAt).toLocaleTimeString('es-ES', {
                         hour: '2-digit',
                         minute: '2-digit',
+                        hour12: false,
                       })}
                     </div>
                   </div>
@@ -261,34 +373,43 @@ export default function Dashboard({
           <div className="p-3 space-y-2 stagger">
             {events.map((event, idx) => {
               const classes = getSeverityClasses(event.severity)
+              const elapsed = timeAgo(event.detectedAt)
               return (
                 <div
                   key={event.id}
                   onClick={() => onSelectEvent(event)}
                   className={`
-                    relative cursor-pointer rounded-xl p-3 border transition-all duration-200
+                    relative cursor-pointer rounded-xl p-3 border transition-all duration-200 overflow-hidden
                     ${selectedEvent?.id === event.id
-                      ? 'bg-accent/15 border-accent/50 shadow-glow-cyan scale-[1.01]'
+                      ? 'bg-cyan-500/15 border-cyan-400/50 shadow-glow-cyan'
                       : 'glass-dark border-border hover:bg-surfaceElev hover:border-borderHover'
                     }
-                    ${selectedEvent?.id !== event.id && classes.border}
+                    ${selectedEvent?.id !== event.id ? classes.border : ''}
                   `}
-                  style={{ animationDelay: idx * 0.05 + 's' }}
+                  style={{ animationDelay: idx * 0.03 + 's' }}
                 >
                   <div className="flex justify-between items-start mb-1">
-                    <h4 className={`font-semibold text-sm line-clamp-1 ${
-                      selectedEvent?.id === event.id ? 'text-cyan-300' : 'text-slate-200'
-                    }`}>
-                      {event.title}
-                    </h4>
-                    <span className={`
-                      text-xs font-bold px-2 py-0.5 rounded-full
-                      ${classes.bg} ${classes.text} border ${classes.border}
-                    `}>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-lg ${classes.text}`}>{classes.icon}</span>
+                      <h4
+                        className={`font-semibold text-sm line-clamp-1 ${
+                          selectedEvent?.id === event.id
+                            ? 'text-cyan-300'
+                            : 'text-slate-200'
+                        }`}
+                      >
+                        {event.title}
+                      </h4>
+                    </div>
+                    <span
+                      className={`
+                        text-xs font-bold px-2 py-0.5 rounded-full
+                        ${classes.bg} ${classes.text} ${classes.border}
+                      `}
+                    >
                       {event.severity === 'critical' ? 'CRÍTICO' :
                        event.severity === 'high' ? 'ALTO' :
-                       event.severity === 'medium' ? 'MEDIO' :
-                       event.severity === 'low' ? 'BAJO' : 'NORMAL'}
+                       event.severity === 'medium' ? 'MEDIO' : 'BAJO'}
                     </span>
                   </div>
 
@@ -297,21 +418,30 @@ export default function Dashboard({
                   </p>
 
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-500 flex items-center gap-1">
-                      {classes.icon} {event.source}
+                    <div className="flex gap-3 text-slate-500">
+                      {event.magnitude && (
+                        <span className="flex items-center gap-1">
+                          📊 M: {event.magnitude.toFixed(1)}
+                        </span>
+                      )}
+                      <span className="font-mono">{elapsed}</span>
+                    </div>
+                    <span className="text-slate-500">
+                      {event.source.toUpperCase()}
                     </span>
-                    {event.magnitude && (
-                      <span className="text-slate-500">
-                        M: {event.magnitude}
-                      </span>
-                    )}
-                    <span className="text-slate-600">
-                      {new Date(event.detectedAt).toLocaleTimeString('es-ES', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        hour12: false,
-                      })}
-                    </span>
+                  </div>
+
+                  {/* Severity progress bar */}
+                  <div className="mt-2 h-1 rounded-full overflow-hidden bg-border">
+                    <div
+                      className="h-full rounded-full transition-all duration-300"
+                      style={{
+                        width: event.severity === 'critical' ? '100%' :
+                               event.severity === 'high' ? '75%' :
+                               event.severity === 'medium' ? '50%' : '25%',
+                        backgroundColor: classes.color,
+                      }}
+                    />
                   </div>
                 </div>
               )
@@ -322,7 +452,7 @@ export default function Dashboard({
 
       {/* Footer */}
       <div className="p-3 border-t border-border glass-dark text-xs text-slate-400 text-center">
-        <p>Actualización automática cada 5 minutos · {events.length} eventos activos</p>
+        <p>Actualización cada 5 min · {events.length} eventos activos · Última sync: {new Date(currentTime).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false })}</p>
       </div>
     </div>
   )
