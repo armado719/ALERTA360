@@ -14,6 +14,19 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 
 ## 🗓️ Historial de Cambios
 
+### **2026-10-16 — Fixes de tipo y configuración Vite**
+
+#### Cambios Realizados:
+- ✅ `src/services/api.ts:4` — Reemplazado `process.env.VITE_API_URL` por `import.meta.env.VITE_API_URL` (convención Vite nativa, evita dependencia de `@types/node`)
+- ✅ `src/vite-env.d.ts` (nuevo) — Archivo de declaración de tipos con `/// <reference types="vite/client" />` para que TypeScript reconozca `import.meta.env`
+- ✅ Type-check pasa limpio (`tsc --noEmit`, 0 errores)
+- ✅ Build verificado (114.34 kB gzipped)
+
+#### Estado:
+- ✅ Type Safety: 100% restaurado
+
+---
+
 ### **2026-10-15 — Fase 4: Estructura de Expansión Creada**
 
 #### Cambios Realizados:
@@ -178,15 +191,12 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 
 ```
 ALERTA360/
-├── frontend/              # React (Fase 1)
-│   ├── src/
-│   │   ├── components/    # Header, Map, Dashboard
-│   │   ├── services/      # api.ts
-│   │   ├── types/         # TypeScript types
-│   │   └── ...
-│   └── package.json
-│
-├── backend/               # Fastify (Fase 2)
+├── src/                       # Frontend (Fase 1) — archivos en raíz del proyecto
+│   ├── components/            # Header, Map, Dashboard
+│   ├── services/              # api.ts
+│   ├── types/                 # TypeScript types
+│   └── ...
+├── backend/                   # Fastify (Fase 2)
 │   ├── src/
 │   │   ├── index.ts       # Server entry
 │   │   ├── routes/        # (pendiente)
@@ -275,7 +285,7 @@ ALERTA360/
 ## 📞 Contacto
 
 **Propietario del proyecto:** Armado719  
-**Email:** armado719@example.com  
+**Email:** arc.fullstack30@gmail.com  
 **GitHub:** https://github.com/armado719/ALERTA360
 
 ---
