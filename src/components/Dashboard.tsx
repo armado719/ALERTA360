@@ -16,38 +16,53 @@ const DISASTER_TYPES: { type: DisasterType; label: string; icon: string }[] = [
   { type: 'earthquake', label: 'Terremotos', icon: '🌍' },
   { type: 'storm', label: 'Tormentas', icon: '⛈️' },
   { type: 'flood', label: 'Inundaciones', icon: '🌊' },
-  { type: 'rain', label: 'Lluvia Extrema', icon: '🌧️' },
+  { type: 'rain', label: 'Lluvia', icon: '🌧️' },
   { type: 'landslide', label: 'Avalanchas', icon: '🏔️' },
-  { type: 'volcanic', label: 'Volcanes', icon: '🌋' },
+  { type: 'volcanic', label: 'Volcánicos', icon: '🌋' },
 ]
 
-const getSeverityBg = (severity: string): string => {
+function getSeverityClasses(severity: string) {
   switch (severity) {
     case 'critical':
-      return 'bg-red-100 border-l-4 border-red-500'
+      return {
+        bg: 'bg-severity-critical/15',
+        border: 'border-severity-critical/40',
+        text: 'text-severity-critical',
+        icon: '🔴',
+        glow: 'shadow-glow-red',
+      }
     case 'high':
-      return 'bg-orange-100 border-l-4 border-orange-500'
+      return {
+        bg: 'bg-severity-high/15',
+        border: 'border-severity-high/40',
+        text: 'text-severity-high',
+        icon: '🟠',
+        glow: 'shadow-glow-orange',
+      }
     case 'medium':
-      return 'bg-yellow-100 border-l-4 border-yellow-500'
+      return {
+        bg: 'bg-severity-medium/15',
+        border: 'border-severity-medium/40',
+        text: 'text-severity-medium',
+        icon: '🟡',
+        glow: 'shadow-glow-amber',
+      }
     case 'low':
-      return 'bg-green-100 border-l-4 border-green-500'
+      return {
+        bg: 'bg-severity-low/15',
+        border: 'border-severity-low/40',
+        text: 'text-severity-low',
+        icon: '🔵',
+        glow: 'shadow-glow-cyan',
+      }
     default:
-      return 'bg-gray-100'
-  }
-}
-
-const getSeverityColor = (severity: string): string => {
-  switch (severity) {
-    case 'critical':
-      return 'text-red-700'
-    case 'high':
-      return 'text-orange-700'
-    case 'medium':
-      return 'text-yellow-700'
-    case 'low':
-      return 'text-green-700'
-    default:
-      return 'text-gray-700'
+      return {
+        bg: 'bg-slate-500/15',
+        border: 'border-slate-500/40',
+        text: 'text-slate-400',
+        icon: '⚪',
+        glow: '',
+      }
   }
 }
 
@@ -68,131 +83,246 @@ export default function Dashboard({
 
   const criticalCount = events.filter(e => e.severity === 'critical').length
   const highCount = events.filter(e => e.severity === 'high').length
+  const mediumCount = events.filter(e => e.severity === 'medium').length
+  const lowCount = events.filter(e => e.severity === 'low').length
+
+  const statCards = [
+    { label: 'CRÍTICOS', value: criticalCount, color: 'severe', icon: '🔴' },
+    { label: 'ALTOS', value: highCount, color: 'high', icon: '🟠' },
+    { label: 'MEDIOS', value: mediumCount, color: 'medium', icon: '🟡' },
+    { label: 'BAJOS', value: lowCount, color: 'low', icon: '🔵' },
+  ]
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full">
       {/* Stats Header */}
-      <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-red-50 to-orange-50">
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div className="bg-red-100 p-3 rounded-lg">
-            <p className="text-xs text-gray-600">Críticos</p>
-            <p className="text-2xl font-bold text-red-600">{criticalCount}</p>
-          </div>
-          <div className="bg-orange-100 p-3 rounded-lg">
-            <p className="text-xs text-gray-600">Altos</p>
-            <p className="text-2xl font-bold text-orange-600">{highCount}</p>
-          </div>
+      <div className="p-4 border-b border-border">
+        <div className="grid grid-cols-2 gap-3 stagger">
+          {statCards.map((card) => (
+            <div
+              key={card.label}
+              className="glass-dark rounded-xl p-3 text-center transition-all duration-200"
+            >
+              <div className="text-xs text-slate-400 mb-1 flex items-center justify-center gap-1">
+                {card.icon} {card.label}
+              </div>
+              <div className="text-2xl font-bold text-white">{card.value}</div>
+              {card.value > 0 && (
+                <div className="mt-1 h-1 bg-border rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${
+                      card.color === 'severe' ? 'bg-severity-critical' :
+                      card.color === 'high' ? 'bg-severity-high' :
+                      card.color === 'medium' ? 'bg-severity-medium' :
+                      'bg-severity-low'
+                    }`}
+                    style={{ width: Math.min(100, card.value * 15) + '%' }}
+                  />
+                </div>
+              )}
+            </div>
+          ))}
         </div>
-        <div className="text-sm text-gray-600">
-          <p><strong>Total:</strong> {events.length} eventos</p>
+
+        <div className="mt-3 text-xs text-slate-400">
+          Total: <span className="text-white font-bold">{events.length}</span> eventos activos
         </div>
       </div>
 
       {/* Filters */}
-      <div className="p-4 border-b border-gray-200">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Filtrar por tipo</h3>
-        <div className="grid grid-cols-2 gap-2 mb-4">
-          {DISASTER_TYPES.map(({ type, label, icon }) => (
-            <button
-              key={type}
-              onClick={() => handleTypeToggle(type)}
-              className={`p-2 rounded text-xs font-medium transition ${
-                filters.types.includes(type)
-                  ? 'bg-red-500 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              {icon} {label}
-            </button>
-          ))}
+      <div className="p-4 border-b border-border">
+        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+          Filtrar por tipo
+        </h3>
+        <div className="grid grid-cols-3 gap-2 stagger">
+          {DISASTER_TYPES.map(({ type, label, icon }) => {
+            const isActive = filters.types.includes(type)
+            return (
+              <button
+                key={type}
+                onClick={() => handleTypeToggle(type)}
+                className={`
+                  relative p-2.5 rounded-xl text-xs font-medium transition-all duration-200
+                  ${isActive
+                    ? 'bg-accent/20 text-white border-2 border-accent/50 shadow-glow-cyan'
+                    : 'glass-dark text-slate-300 hover:text-white hover:bg-surfaceElev'
+                  }
+                `}
+              >
+                <span className="block text-center">
+                  <span className="text-sm block mb-0.5">{icon}</span>
+                  {label}
+                </span>
+              </button>
+            )
+          })}
         </div>
 
-        <div className="text-xs font-semibold text-gray-700 mb-2">Rango de tiempo</div>
+        <div className="mt-4 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+          Rango de tiempo
+        </div>
         <select
           value={filters.timeRange}
           onChange={(e) => onFiltersChange({ ...filters, timeRange: e.target.value })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+          className="w-full px-3 py-2 glass-dark border border-border rounded-xl text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-accent transition"
         >
-          <option value="1h">Última hora</option>
-          <option value="24h">Últimas 24 horas</option>
-          <option value="7d">Últimos 7 días</option>
+          <option value="1h" className="bg-surfaceElev">Última hora</option>
+          <option value="24h" className="bg-surfaceElev">Últimas 24h</option>
+          <option value="7d" className="bg-surfaceElev">Últimos 7 días</option>
         </select>
       </div>
 
       {/* Selected Event Detail */}
       {selectedEvent && (
-        <div className="p-4 border-b border-gray-200 bg-blue-50">
-          <div className="flex justify-between items-start mb-2">
-            <h3 className="font-bold text-gray-900">{selectedEvent.title}</h3>
-            <button
-              onClick={() => onSelectEvent(null)}
-              className="text-gray-500 hover:text-gray-700 text-lg"
-            >
-              ✕
-            </button>
-          </div>
-          <p className="text-sm text-gray-700 mb-2">{selectedEvent.description}</p>
-          <div className="text-xs text-gray-600 space-y-1">
-            <p>
-              <strong>Severidad:</strong> <span className={getSeverityColor(selectedEvent.severity)}>{selectedEvent.severity.toUpperCase()}</span>
-            </p>
-            {selectedEvent.magnitude && (
-              <p><strong>Magnitud:</strong> {selectedEvent.magnitude}</p>
-            )}
-            <p>
-              <strong>Coordenadas:</strong> {selectedEvent.latitude.toFixed(2)}, {selectedEvent.longitude.toFixed(2)}
-            </p>
-            <p><strong>Fuente:</strong> {selectedEvent.source}</p>
-            <p>
-              <strong>Detectado:</strong> {new Date(selectedEvent.detectedAt).toLocaleString('es-ES')}
-            </p>
-          </div>
+        <div className="p-4 border-b border-border animate-fade-in">
+          {(() => {
+            const classes = getSeverityClasses(selectedEvent.severity)
+            return (
+              <div className={`
+                ${classes.bg} ${classes.border} border-l-4 rounded-xl p-4
+                ${classes.glow}
+              `}>
+                <div className="flex justify-between items-start mb-2">
+                  <h3 className={`font-bold text-base ${classes.text}`}>
+                    {selectedEvent.title}
+                  </h3>
+                  <button
+                    onClick={() => onSelectEvent(null)}
+                    className="text-slate-500 hover:text-slate-300 text-lg transition"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <p className="text-sm text-slate-300 mb-3 leading-relaxed">
+                  {selectedEvent.description}
+                </p>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="glass-dark rounded-lg p-2">
+                    <span className="text-slate-500">Severidad</span>
+                    <div className={`font-bold ${classes.text} mt-0.5`}>
+                      {selectedEvent.severity.toUpperCase()}
+                    </div>
+                  </div>
+
+                  {selectedEvent.magnitude && (
+                    <div className="glass-dark rounded-lg p-2">
+                      <span className="text-slate-500">Magnitud</span>
+                      <div className="font-bold text-white mt-0.5">
+                        {selectedEvent.magnitude}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="glass-dark rounded-lg p-2 col-span-2">
+                    <span className="text-slate-500">Coordenadas</span>
+                    <div className="font-mono text-xs text-slate-300 mt-0.5">
+                      {selectedEvent.latitude.toFixed(4)}, {selectedEvent.longitude.toFixed(4)}
+                    </div>
+                  </div>
+
+                  <div className="glass-dark rounded-lg p-2">
+                    <span className="text-slate-500">Fuente</span>
+                    <div className="font-bold text-cyan-400 mt-0.5">
+                      {selectedEvent.source.toUpperCase()}
+                    </div>
+                  </div>
+
+                  <div className="glass-dark rounded-lg p-2">
+                    <span className="text-slate-500">Detectado</span>
+                    <div className="font-mono text-xs text-slate-300 mt-0.5">
+                      {new Date(selectedEvent.detectedAt).toLocaleTimeString('es-ES', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
         </div>
       )}
 
       {/* Events List */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
-          <div className="p-4 text-center text-gray-500">Cargando eventos...</div>
+          <div className="p-4 text-center">
+            <div className="inline-block animate-spin w-6 h-6 border-2 border-cyan-400 border-t-transparent rounded-full" />
+            <p className="mt-2 text-sm text-slate-400">Cargando eventos...</p>
+          </div>
         ) : events.length === 0 ? (
-          <div className="p-4 text-center text-gray-500">No hay eventos para mostrar</div>
+          <div className="p-6 text-center">
+            <div className="text-3xl mb-2">📭</div>
+            <p className="text-sm text-slate-400">No hay eventos para mostrar</p>
+          </div>
         ) : (
-          <div className="divide-y">
-            {events.map((event) => (
-              <div
-                key={event.id}
-                onClick={() => onSelectEvent(event)}
-                className={`p-4 cursor-pointer hover:bg-gray-50 transition ${
-                  selectedEvent?.id === event.id ? 'bg-blue-50 border-l-4 border-blue-500' : getSeverityBg(event.severity)
-                }`}
-              >
-                <div className="flex justify-between items-start mb-1">
-                  <h4 className="font-semibold text-sm text-gray-900">{event.title}</h4>
-                  <span className={`text-xs font-bold px-2 py-1 rounded ${
-                    event.severity === 'critical' ? 'bg-red-500 text-white' :
-                    event.severity === 'high' ? 'bg-orange-500 text-white' :
-                    event.severity === 'medium' ? 'bg-yellow-500 text-white' :
-                    'bg-green-500 text-white'
-                  }`}>
-                    {event.severity.toUpperCase()}
-                  </span>
+          <div className="p-3 space-y-2 stagger">
+            {events.map((event, idx) => {
+              const classes = getSeverityClasses(event.severity)
+              return (
+                <div
+                  key={event.id}
+                  onClick={() => onSelectEvent(event)}
+                  className={`
+                    relative cursor-pointer rounded-xl p-3 border transition-all duration-200
+                    ${selectedEvent?.id === event.id
+                      ? 'bg-accent/15 border-accent/50 shadow-glow-cyan scale-[1.01]'
+                      : 'glass-dark border-border hover:bg-surfaceElev hover:border-borderHover'
+                    }
+                    ${selectedEvent?.id !== event.id && classes.border}
+                  `}
+                  style={{ animationDelay: idx * 0.05 + 's' }}
+                >
+                  <div className="flex justify-between items-start mb-1">
+                    <h4 className={`font-semibold text-sm line-clamp-1 ${
+                      selectedEvent?.id === event.id ? 'text-cyan-300' : 'text-slate-200'
+                    }`}>
+                      {event.title}
+                    </h4>
+                    <span className={`
+                      text-xs font-bold px-2 py-0.5 rounded-full
+                      ${classes.bg} ${classes.text} border ${classes.border}
+                    `}>
+                      {event.severity === 'critical' ? 'CRÍTICO' :
+                       event.severity === 'high' ? 'ALTO' :
+                       event.severity === 'medium' ? 'MEDIO' :
+                       event.severity === 'low' ? 'BAJO' : 'NORMAL'}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-400 mb-2 line-clamp-2">
+                    {event.description}
+                  </p>
+
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-500 flex items-center gap-1">
+                      {classes.icon} {event.source}
+                    </span>
+                    {event.magnitude && (
+                      <span className="text-slate-500">
+                        M: {event.magnitude}
+                      </span>
+                    )}
+                    <span className="text-slate-600">
+                      {new Date(event.detectedAt).toLocaleTimeString('es-ES', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false,
+                      })}
+                    </span>
+                  </div>
                 </div>
-                <p className="text-xs text-gray-600 mb-2">{event.description}</p>
-                {event.magnitude && (
-                  <p className="text-xs text-gray-500 mb-1">📊 Magnitud: {event.magnitude}</p>
-                )}
-                <p className="text-xs text-gray-400">
-                  {new Date(event.detectedAt).toLocaleTimeString('es-ES')}
-                </p>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
 
       {/* Footer */}
-      <div className="p-3 border-t border-gray-200 bg-gray-50 text-xs text-gray-500 text-center">
-        <p>Actualización automática cada 5 minutos</p>
+      <div className="p-3 border-t border-border glass-dark text-xs text-slate-400 text-center">
+        <p>Actualización automática cada 5 minutos · {events.length} eventos activos</p>
       </div>
     </div>
   )

@@ -3,28 +3,81 @@ import { DisasterEvent } from '../types'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
 
+// Create axios instance
 const api = axios.create({
   baseURL: API_BASE,
   timeout: 10000,
 })
 
+// Auth token storage
+let authToken: string | null = localStorage.getItem('alerta360_token')
+
+// Set Authorization header if token exists
+if (authToken) {
+  api.defaults.headers.common['Authorization'] = `Bearer ${authToken}`
+}
+
+// Persist token to localStorage and set header
+export function setAuthToken(token: string | null) {
+  authToken = token
+  if (token) {
+    localStorage.setItem('alerta360_token', token)
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+  } else {
+    localStorage.removeItem('alerta360_token')
+    delete api.defaults.headers.common['Authorization']
+  }
+}
+
+// Auth API
+export interface AuthUser {
+  id: string
+  email: string
+  username: string
+}
+
+export async function register(
+  email: string,
+  username: string,
+  password: string
+): Promise<{ user: AuthUser; token: string }> {
+  const response = await api.post('/auth/register', { email, username, password })
+  const { token, user } = response.data
+  setAuthToken(token ?? null)
+  return { user, token: token ?? '' }
+}
+
+export async function login(
+  email: string,
+  password: string
+): Promise<{ token: string; user: AuthUser }> {
+  const response = await api.post('/auth/login', { email, password })
+  const { token, user } = response.data
+  setAuthToken(token)
+  return { token, user }
+}
+
+export async function logout(): Promise<void> {
+  setAuthToken(null)
+}
+
+export async function getMe(): Promise<AuthUser> {
+  const response = await api.get('/auth/me')
+  return response.data
+}
+
+// Events API
 export async function fetchDisasterEvents(filters: {
   types: string[]
   timeRange: '1h' | '24h' | '7d'
 }): Promise<DisasterEvent[]> {
-  try {
-    const response = await api.get('/events', {
-      params: {
-        types: filters.types.join(','),
-        timeRange: filters.timeRange,
-      },
-    })
-    return response.data
-  } catch (error) {
-    console.error('Error fetching events:', error)
-    // Return mock data for MVP
-    return getMockEvents()
-  }
+  const response = await api.get('/events', {
+    params: {
+      types: filters.types.join(','),
+      timeRange: filters.timeRange,
+    },
+  })
+  return response.data
 }
 
 export async function fetchEventById(id: string): Promise<DisasterEvent | null> {
@@ -37,84 +90,37 @@ export async function fetchEventById(id: string): Promise<DisasterEvent | null> 
   }
 }
 
-export async function subscribeToAlerts(locationId: string): Promise<void> {
-  try {
-    await api.post('/notifications/subscribe', { locationId })
-  } catch (error) {
-    console.error('Error subscribing to alerts:', error)
-  }
+// Locations API
+export interface Location {
+  id: string
+  name: string
+  latitude: number
+  longitude: number
+  radiusKm: number
+  createdAt: string
+  updatedAt: string
 }
 
-// Mock data for MVP
-function getMockEvents(): DisasterEvent[] {
-  return [
-    {
-      id: 'evt-001',
-      type: 'earthquake',
-      title: 'Terremoto en Colombia',
-      description: 'Terremoto de magnitud 5.2 en zona cafetera',
-      latitude: 5.0,
-      longitude: -75.5,
-      magnitude: 5.2,
-      severity: 'high',
-      occurredAt: new Date(Date.now() - 30 * 60000).toISOString(),
-      detectedAt: new Date(Date.now() - 25 * 60000).toISOString(),
-      source: 'USGS',
-      rawData: {
-        lat: 5.0,
-        lon: -75.5,
-        depth: 12,
-        mag: 5.2,
-      },
-    },
-    {
-      id: 'evt-002',
-      type: 'storm',
-      title: 'Tormenta severa en Ecuador',
-      description: 'Tormenta con vientos de 60 km/h en Quito',
-      latitude: -0.22,
-      longitude: -78.51,
-      severity: 'medium',
-      occurredAt: new Date(Date.now() - 10 * 60000).toISOString(),
-      detectedAt: new Date(Date.now() - 8 * 60000).toISOString(),
-      source: 'NOAA',
-    },
-    {
-      id: 'evt-003',
-      type: 'flood',
-      title: 'Inundaciones en Perú',
-      description: 'Desbordamiento del Río Urubamba',
-      latitude: -12.04,
-      longitude: -72.54,
-      severity: 'critical',
-      occurredAt: new Date(Date.now() - 5 * 60000).toISOString(),
-      detectedAt: new Date(Date.now() - 3 * 60000).toISOString(),
-      source: 'NASA FIRMS',
-    },
-    {
-      id: 'evt-004',
-      type: 'rain',
-      title: 'Lluvia extrema en Venezuela',
-      description: 'Precipitación de 200mm registrada en Caracas',
-      latitude: 10.49,
-      longitude: -66.86,
-      severity: 'high',
-      occurredAt: new Date(Date.now() - 2 * 60000).toISOString(),
-      detectedAt: new Date(Date.now() - 1 * 60000).toISOString(),
-      source: 'NOAA',
-    },
-    {
-      id: 'evt-005',
-      type: 'earthquake',
-      title: 'Temblor en Chile',
-      description: 'Sismo de magnitud 4.8 en zona central',
-      latitude: -33.87,
-      longitude: -70.67,
-      magnitude: 4.8,
-      severity: 'medium',
-      occurredAt: new Date(Date.now() - 45 * 60000).toISOString(),
-      detectedAt: new Date(Date.now() - 40 * 60000).toISOString(),
-      source: 'USGS',
-    },
-  ]
+export async function fetchLocations(): Promise<Location[]> {
+  const response = await api.get('/locations')
+  return response.data
+}
+
+export async function createLocation(location: {
+  name: string
+  latitude: number
+  longitude: number
+  radiusKm: number
+}): Promise<Location> {
+  const response = await api.post('/locations', location)
+  return response.data
+}
+
+export async function deleteLocation(id: string): Promise<void> {
+  await api.delete(`/locations/${id}`)
+}
+
+// Alerts
+export async function subscribeToAlerts(locationId: string): Promise<void> {
+  await api.post('/notifications/subscribe', { locationId })
 }

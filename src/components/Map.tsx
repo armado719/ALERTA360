@@ -1,4 +1,5 @@
-import { MapContainer, TileLayer, Marker, Popup, CircleMarker } from 'react-leaflet'
+import { useEffect, useRef } from 'react'
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import { DisasterEvent } from '../types'
 
@@ -9,57 +10,112 @@ interface MapProps {
   loading: boolean
 }
 
-const getMarkerColor = (type: string): string => {
-  switch (type) {
-    case 'earthquake':
-      return '#C7352F' // Rojo
-    case 'storm':
-      return '#B7791F' // Naranja
-    case 'flood':
-      return '#1e40af' // Azul oscuro
-    case 'rain':
-      return '#0891b2' // Cian
-    case 'landslide':
-      return '#9333ea' // Púrpura
-    case 'volcanic':
-      return '#dc2626' // Rojo vivo
+// --- Map tile: dark premium ---
+const TILE_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+const TILE_ATTR = '&copy; <a href="https://carto.com/attributions">CARTO</a> &copy; <a href="https://openstreetmap.org">OpenStreetMap</a>'
+
+// --- Severity marker config ---
+const getSeverityConfig = (severity: string) => {
+  switch (severity) {
+    case 'critical':
+      return { color: '#ef4444', glow: 'red', pulse: true }
+    case 'high':
+      return { color: '#f97316', glow: 'orange', pulse: true }
+    case 'medium':
+      return { color: '#eab308', glow: 'amber', pulse: false }
+    case 'low':
+      return { color: '#06b6d4', glow: 'cyan', pulse: false }
     default:
-      return '#6366f1' // Índigo
+      return { color: '#64748b', glow: '', pulse: false }
   }
 }
 
-const getSeverityIcon = (severity: string): string => {
-  switch (severity) {
-    case 'critical':
-      return '🔴'
-    case 'high':
-      return '🟠'
-    case 'medium':
-      return '🟡'
-    case 'low':
-      return '🟢'
-    default:
-      return '⚪'
+const getIconLetter = (type: string): string => {
+  switch (type) {
+    case 'earthquake': return '🌍'
+    case 'storm': return '⛈️'
+    case 'flood': return '🌊'
+    case 'rain': return '🌧️'
+    case 'landslide': return '🏔️'
+    case 'volcanic': return '🌋'
+    default: return '⚠️'
   }
+}
+
+// Create a premium custom icon with neon glow
+function createCustomIcon(event: DisasterEvent): L.DivIcon {
+  const cfg = getSeverityConfig(event.severity)
+  const pulseClass = cfg.pulse ? 'marker-pulse' : ''
+  const size = event.severity === 'critical' ? 28 : 22
+
+  const html = `
+    <div class="relative flex items-center justify-center">
+      <div class="absolute inset-0 rounded-full animate-ping opacity-30"
+           style="background-color: ${cfg.color}; width: ${size + 6}px; height: ${size + 6}px; box-shadow: 0 0 12px ${cfg.color};"></div>
+      <div class="relative flex items-center justify-center rounded-full border-2 border-white ${pulseClass}"
+           style="
+             background-color: ${cfg.color};
+             width: ${size}px;
+             height: ${size}px;
+             box-shadow: 0 0 8px ${cfg.color}, 0 0 16px ${cfg.color};
+             animation: ${cfg.pulse ? 'pulse 1.5s ease-in-out infinite' : 'none'};
+           ">
+        <span style="font-size: ${size / 2.2}px; filter: drop-shadow(0 0 3px rgba(0,0,0,0.8))">${getIconLetter(event.type)}</span>
+      </div>
+    </div>
+  `
+
+  return L.divIcon({
+    html,
+    className: 'alerta360-marker',
+    iconSize: [size + 6, size + 6],
+    iconAnchor: [(size + 6) / 2, (size + 6) / 2],
+    popupAnchor: [0, -16],
+  })
+}
+
+// Component to fit map bounds to all event markers
+function FitBounds({ events }: { events: DisasterEvent[] }) {
+  const map = useMap()
+  const boundsComputed = events.length > 0
+  const bounds = L.latLngBounds(
+    events.map(e => [e.latitude, e.longitude] as [number, number])
+  )
+
+  useEffect(() => {
+    if (boundsComputed && bounds.isValid()) {
+      map.fitBounds(bounds, { padding: [60, 60], maxZoom: 6 })
+    }
+  }, [map, bounds, boundsComputed])
+
+  return null
+}
+
+// Map controls overlay (top-right buttons)
+function MapControls({ onLayerChange }: { onLayerChange: () => void }) {
+  return (
+    <div className="absolute top-4 right-4 z-40 flex flex-col gap-2">
+      <button
+        onClick={onLayerChange}
+        className="glass-dark border border-border text-slate-300 hover:text-cyan-400 hover:bg-surfaceElev rounded-xl p-2.5 transition-all duration-200 transform hover:scale-105"
+        title="Cambiar capa"
+      >
+        🗺️
+      </button>
+    </div>
+  )
 }
 
 export default function Map({ events, selectedEvent, onSelectEvent, loading }: MapProps) {
-  const createCustomIcon = (color: string) => {
-    return L.divIcon({
-      html: `<div style="background-color: ${color}; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);" />`,
-      className: '',
-      iconSize: [24, 24],
-      popupAnchor: [0, -12],
-    })
-  }
+  const mapRef = useRef<L.Map | null>(null)
 
   return (
     <div className="relative w-full h-full">
       {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-20 z-40">
-          <div className="bg-white p-6 rounded-lg shadow-lg">
-            <div className="animate-spin h-8 w-8 border-4 border-red-500 border-t-transparent rounded-full" />
-            <p className="mt-2 text-gray-700">Cargando eventos...</p>
+        <div className="absolute inset-0 flex items-center justify-center bg-surfaceElev/60 backdrop-blur-sm z-10">
+          <div className="glass-dark rounded-2xl p-6 flex items-center gap-4 shadow-2xl">
+            <div className="animate-spin w-6 h-6 border-2 border-cyan-400 border-t-transparent rounded-full" />
+            <span className="text-slate-300">Cargando eventos...</span>
           </div>
         </div>
       )}
@@ -68,18 +124,20 @@ export default function Map({ events, selectedEvent, onSelectEvent, loading }: M
         center={[0, 0]}
         zoom={3}
         style={{ width: '100%', height: '100%' }}
-        className="z-10"
+        ref={mapRef}
+        zoomControl={true}
+        attributionControl={false}
+        className="z-0"
       >
-        <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution='&copy; OpenStreetMap contributors'
-          maxZoom={19}
-        />
+        {/* Dark premium tile layer */}
+        <TileLayer url={TILE_URL} attribution={TILE_ATTR} maxZoom={19} />
 
+        {/* Fit bounds when events change */}
+        <FitBounds events={events} />
+
+        {/* Draw custom markers */}
         {events.map((event) => {
-          const color = getMarkerColor(event.type)
-          const icon = createCustomIcon(color)
-
+          const icon = createCustomIcon(event)
           return (
             <Marker
               key={event.id}
@@ -91,39 +149,50 @@ export default function Map({ events, selectedEvent, onSelectEvent, loading }: M
               title={event.title}
             >
               <Popup>
-                <div className="p-2 text-sm">
-                  <div className="font-bold text-base mb-1 flex items-center gap-2">
-                    <span>{getSeverityIcon(event.severity)}</span>
-                    <span>{event.title}</span>
+                <div className="p-2 min-w-[220px]">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xl">{getIconLetter(event.type)}</span>
+                    <h4 className="font-bold text-sm text-white">{event.title}</h4>
                   </div>
-                  <p className="text-gray-700 mb-1">{event.description}</p>
-                  {event.magnitude && (
-                    <p className="text-gray-600">
-                      <strong>Magnitud:</strong> {event.magnitude}
-                    </p>
-                  )}
-                  <p className="text-gray-500 text-xs mt-2">
-                    {new Date(event.detectedAt).toLocaleTimeString('es-ES')}
-                  </p>
+                  <p className="text-xs text-slate-300 mb-2">{event.description}</p>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-400">{event.source}</span>
+                    {event.magnitude && (
+                      <span className="text-slate-400">M: {event.magnitude}</span>
+                    )}
+                  </div>
                 </div>
               </Popup>
             </Marker>
           )
         })}
 
-        {/* Draw circles around selected event if it's critical */}
-        {selectedEvent && selectedEvent.severity === 'critical' && (
-          <CircleMarker
-            center={[selectedEvent.latitude, selectedEvent.longitude]}
-            radius={50}
-            fill={false}
-            color="#C7352F"
-            weight={2}
-            dashArray="5, 5"
-            opacity={0.7}
-          />
+        {/* Highlight selected event with a circle */}
+        {selectedEvent && (
+          <div
+            className="absolute pointer-events-none"
+            style={{
+              left: '50%',
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
+              zIndex: 400,
+            }}
+          >
+            <div
+              className="rounded-full border-2 animate-pulse"
+              style={{
+                width: '60px',
+                height: '60px',
+                borderColor: getSeverityConfig(selectedEvent.severity).color,
+                boxShadow: `0 0 20px ${getSeverityConfig(selectedEvent.severity).color}`,
+              }}
+            />
+          </div>
         )}
       </MapContainer>
+
+      {/* Map Controls */}
+      <MapControls onLayerChange={() => {}} />
     </div>
   )
 }

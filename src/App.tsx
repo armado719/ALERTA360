@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react'
 import Map from './components/Map'
 import Dashboard from './components/Dashboard'
 import Header from './components/Header'
+import AuthModal from './components/AuthModal'
 import { DisasterEvent } from './types'
-import { fetchDisasterEvents } from './services/api'
+import { fetchDisasterEvents, getMe, setAuthToken, AuthUser } from './services/api'
 
 function App() {
   const [events, setEvents] = useState<DisasterEvent[]>([])
@@ -14,6 +15,29 @@ function App() {
     types: ['earthquake', 'storm', 'flood', 'rain'] as string[],
     timeRange: '24h' as '1h' | '24h' | '7d',
   })
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
+  const [showAuthModal, setShowAuthModal] = useState(false)
+
+  // Check for existing auth on mount
+  useEffect(() => {
+    const initAuth = async () => {
+      const token = localStorage.getItem('alerta360_token')
+      if (token) {
+        try {
+          const userData = await getMe()
+          setUser(userData)
+          setShowAuthModal(false)
+        } catch {
+          setAuthToken(null)
+          setShowAuthModal(true)
+        }
+      } else {
+        setShowAuthModal(true)
+      }
+    }
+    initAuth()
+  }, [])
 
   useEffect(() => {
     const loadEvents = async () => {
@@ -29,36 +53,42 @@ function App() {
         setLoading(false)
       }
     }
-
     loadEvents()
-    // Refresh every 5 minutes
     const interval = setInterval(loadEvents, 5 * 60 * 1000)
     return () => clearInterval(interval)
   }, [filters])
 
   return (
-    <div className="flex flex-col h-screen bg-gray-100">
-      <Header />
-      
-      <div className="flex flex-1 overflow-hidden">
-        {/* Main map area */}
+    <div className="flex flex-col h-screen bg-gradient-to-b from-surface via-surfaceElev to-surface text-slate-200 antialiased overflow-hidden">
+      <div className="absolute inset-0 bg-grid-sm opacity-3 pointer-events-none" />
+
+      <Header
+        user={user}
+        onAuthClick={() => { setAuthMode('login'); setShowAuthModal(true) }}
+        onLogout={() => { setUser(null); setAuthToken(null); setAuthMode('login'); setShowAuthModal(true) }}
+      />
+
+      <div className="relative flex flex-1 overflow-hidden p-4 gap-4">
+        {error && (
+          <div className="absolute top-20 left-4 right-4 max-w-md glass border border-severity-critical/50 rounded-xl p-4 text-sm flex items-center gap-3 animate-fade-in z-50 shadow-glow-red">
+            <span className="text-severity-critical text-lg">⚠️</span>
+            <span>{error}</span>
+          </div>
+        )}
+
         <div className="flex-1 relative">
-          {error && (
-            <div className="absolute top-4 left-4 right-4 bg-red-500 text-white px-4 py-3 rounded-lg shadow-lg z-50">
-              ⚠️ {error}
-            </div>
-          )}
-          <Map 
-            events={events} 
-            selectedEvent={selectedEvent}
-            onSelectEvent={setSelectedEvent}
-            loading={loading}
-          />
+          <div className="w-full h-full rounded-2xl overflow-hidden glass-dark border border-border">
+            <Map
+              events={events}
+              selectedEvent={selectedEvent}
+              onSelectEvent={setSelectedEvent}
+              loading={loading}
+            />
+          </div>
         </div>
 
-        {/* Sidebar */}
-        <div className="w-96 bg-white shadow-lg overflow-y-auto">
-          <Dashboard 
+        <div className="w-[420px] flex flex-col glass-dark border border-border rounded-2xl overflow-hidden">
+          <Dashboard
             events={events}
             selectedEvent={selectedEvent}
             onSelectEvent={setSelectedEvent}
@@ -68,6 +98,17 @@ function App() {
           />
         </div>
       </div>
+
+      <AuthModal
+        isOpen={showAuthModal}
+        mode={authMode}
+        onClose={() => setShowAuthModal(false)}
+        onModeChange={setAuthMode}
+        onAuthSuccess={(user) => {
+          setUser(user)
+          setShowAuthModal(false)
+        }}
+      />
     </div>
   )
 }
