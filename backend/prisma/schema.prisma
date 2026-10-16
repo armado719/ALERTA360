@@ -1,0 +1,131 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// MODELOS DE DATOS - ALERTA360
+// ============================================================================
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  username      String   @unique
+  passwordHash  String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  locations     Location[]
+  notifications Notification[]
+  preferences   UserPreference?
+}
+
+model UserPreference {
+  id                  String   @id @default(uuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  alertRadiusKm       Int      @default(50)
+  disasterTypes       String[] @default(["earthquake", "storm", "flood", "rain"])
+  pushEnabled         Boolean  @default(true)
+  emailEnabled        Boolean  @default(true)
+  smsEnabled          Boolean  @default(false)
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model Location {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  name        String
+  latitude    Float
+  longitude   Float
+  radiusKm    Int      @default(50)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  notifications Notification[]
+  
+  @@index([userId])
+}
+
+model DisasterEvent {
+  id          String   @id @default(uuid())
+  type        String   // earthquake, storm, flood, rain, landslide, volcanic, hurricane
+  source      String   // usgs, noaa, nasa, custom
+  
+  externalId  String?  // ID de la fuente original
+  
+  latitude    Float
+  longitude   Float
+  
+  magnitude   Float?   // Para terremotos
+  intensity   Int?     // Intensidad percibida (1-10)
+  
+  title       String
+  description String
+  
+  severity    String   // low, medium, high, critical
+  
+  occurredAt  DateTime
+  detectedAt  DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  rawData     Json?    // Payload completo de la API origen
+  
+  isActive    Boolean  @default(true)
+  
+  notifications Notification[]
+  
+  @@index([type])
+  @@index([occurredAt])
+  @@index([isActive])
+  @@index([latitude, longitude])
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  eventId     String
+  event       DisasterEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  
+  locationId  String?
+  location    Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  
+  distanceKm  Float
+  
+  channel     String   // push, email, sms
+  status      String   // pending, sent, delivered, failed
+  
+  sentAt      DateTime @default(now())
+  deliveredAt DateTime?
+  readAt      DateTime?
+  
+  @@index([userId])
+  @@index([eventId])
+  @@index([status])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  
+  action      String
+  resource    String
+  metadata    Json?
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([userId])
+  @@index([createdAt])
+}
