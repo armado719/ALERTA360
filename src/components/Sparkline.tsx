@@ -7,23 +7,45 @@ import {
   Filler,
   Tooltip,
   ArcElement,
+  Legend,
 } from 'chart.js'
 import { Line, Doughnut } from 'react-chartjs-2'
 
-ChartJS.register(LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, ArcElement)
+ChartJS.register(
+  LineElement,
+  PointElement,
+  LinearScale,
+  CategoryScale,
+  Filler,
+  Tooltip,
+  ArcElement,
+  Legend
+)
 
+/* ------------------------------------------------------------------ */
+/*  Sparkline — línea fina con relleno degradado y glow               */
+/* ------------------------------------------------------------------ */
 export function Sparkline({ data, color }: { data: number[]; color: string }) {
   const chartData = {
     labels: data.map((_, i) => i.toString()),
     datasets: [
       {
         data,
-        borderColor: 'rgba(255, 255, 255, 0.45)',
-        backgroundColor: color + '30',
-        borderWidth: 1.5,
+        borderColor: color,
+        backgroundColor: (ctx: any) => {
+          const { chart } = ctx
+          const { ctx: c, chartArea } = chart
+          if (!chartArea) return `${color}18`
+          const gradient = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom)
+          gradient.addColorStop(0, `${color}40`)
+          gradient.addColorStop(1, `${color}00`)
+          return gradient
+        },
+        borderWidth: 1.6,
         pointRadius: 0,
+        pointHoverRadius: 0,
         fill: true,
-        tension: 0.4,
+        tension: 0.42,
       },
     ],
   }
@@ -31,25 +53,31 @@ export function Sparkline({ data, color }: { data: number[]; color: string }) {
   const options: any = {
     responsive: true,
     maintainAspectRatio: false,
-    plugin: {
+    animation: false,
+    plugins: {
       legend: { display: false },
       tooltip: { enabled: false },
     },
     scales: {
       x: { display: false, grid: { display: false } },
-      y: { display: false, grid: { display: false } },
+      y: { display: false, grid: { display: false }, grace: '25%' },
     },
-    animation: { duration: 0 },
-    parsed: false,
+    elements: { line: { borderCapStyle: 'round' } },
   }
 
   return (
-    <div className="w-full h-5 opacity-50">
-      <Line options={options} data={chartData} />
+    <div
+      className="w-full h-full"
+      style={{ filter: `drop-shadow(0 0 4px ${color}55)` }}
+    >
+      <Line options={options} data={chartData as any} />
     </div>
   )
 }
 
+/* ------------------------------------------------------------------ */
+/*  Dona — anillo grueso tipo HUD                                     */
+/* ------------------------------------------------------------------ */
 export function DonutChart({
   data,
   labels,
@@ -59,15 +87,20 @@ export function DonutChart({
   labels: string[]
   colors: string[]
 }) {
+  const total = data.reduce((a, b) => a + b, 0)
+
   const chartData = {
     labels,
     datasets: [
       {
-        data: data,
+        data,
         backgroundColor: colors,
-        borderColor: 'rgba(9, 13, 21, 0.82)',
-        borderWidth: 2,
-        cutout: '65%',
+        hoverBackgroundColor: colors,
+        borderColor: 'rgba(10, 20, 30, 0.9)',
+        borderWidth: 1.5,
+        borderRadius: 5,
+        spacing: 2,
+        cutout: '72%',
       },
     ],
   }
@@ -75,36 +108,37 @@ export function DonutChart({
   const options: any = {
     responsive: true,
     maintainAspectRatio: false,
-    plugin: {
-      legend: {
-        position: 'bottom' as const,
-        labels: {
-          color: '#667287',
-          font: { size: 10 },
-          padding: 12,
-          usePointStyle: true,
-          pointStyle: 'circle',
-        },
-      },
+    cutoutPercentage: 70,
+    animation: { duration: 500 },
+    layout: { padding: 2 },
+    plugins: {
+      legend: { display: false },
       tooltip: {
         callbacks: {
-          label: (ctx: any) => `${ctx.label}: ${ctx.parsed} eventos`,
+          label: (ctx: any) => {
+            const value = ctx.parsed
+            const pct = total > 0 ? Math.round((value / total) * 100) : 0
+            return ` ${ctx.label}: ${value} (${pct}%)`
+          },
         },
-        backgroundColor: 'rgba(9, 13, 21, 0.9)',
-          borderColor: 'rgba(255, 255, 255, 0.06)',
-          titleColor: '#e9eef8',
-          bodyColor: '#8b97aa',
+        backgroundColor: 'rgba(10, 20, 30, 0.95)',
+        borderColor: 'rgba(56, 189, 248, 0.25)',
+        borderWidth: 1,
+        titleColor: '#e2e8f0',
+        bodyColor: '#cbd5e1',
         padding: 8,
         cornerRadius: 8,
-        displayColors: false,
+        displayColors: true,
+        boxWidth: 8,
+        boxHeight: 8,
+        usePointStyle: true,
       },
     },
-    animation: { duration: 0 },
   }
 
   return (
-    <div className="w-full h-40">
-      <Doughnut options={options} data={chartData} />
+    <div className="w-full h-full">
+      <Doughnut options={options} data={chartData as any} />
     </div>
   )
 }

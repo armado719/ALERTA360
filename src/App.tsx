@@ -1,25 +1,33 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { WifiOff, X } from 'lucide-react'
 import Map from './components/Map'
+import Map3D from './components/Map3D'
 import Dashboard from './components/Dashboard'
 import Header from './components/Header'
 import AuthModal from './components/AuthModal'
+import EventDetailCard from './components/EventDetailCard'
 import { DisasterEvent } from './types'
 import { fetchDisasterEvents, getMe, setAuthToken, AuthUser } from './services/api'
+import { DEMO_EVENTS } from './data/demoEvents'
 
 function App() {
   const [events, setEvents] = useState<DisasterEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [demo, setDemo] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState<DisasterEvent | null>(null)
   const [filters, setFilters] = useState({
-    types: ['earthquake', 'storm', 'flood', 'rain'] as string[],
+    types: ['earthquake', 'storm', 'flood', 'rain', 'landslide', 'volcanic'] as string[],
     timeRange: '24h' as '1h' | '24h' | '7d',
   })
   const [user, setUser] = useState<AuthUser | null>(null)
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
   const [showAuthModal, setShowAuthModal] = useState(false)
+  const [showErrorToast, setShowErrorToast] = useState(true)
+  const [mapMode, setMapMode] = useState<'2d' | '3d'>('2d')
 
-  // Check for existing auth on mount
+  /* ---------- Auth ---------- */
   useEffect(() => {
     const initAuth = async () => {
       const token = localStorage.getItem('alerta360_token')
@@ -39,69 +47,159 @@ function App() {
     initAuth()
   }, [])
 
-  useEffect(() => {
-    const loadEvents = async () => {
-      try {
-        setLoading(true)
-        const data = await fetchDisasterEvents(filters)
-        setEvents(data)
-        setError(null)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Error loading events')
-        console.error('Error fetching events:', err)
-      } finally {
-        setLoading(false)
-      }
+  /* ---------- Eventos ---------- */
+  const loadEvents = useCallback(async () => {
+    try {
+      setLoading(true)
+      const data = await fetchDisasterEvents(filters)
+      setEvents(data)
+      setError(null)
+      setDemo(false)
+    } catch (err) {
+      console.error('Error fetching events:', err)
+      setDemo(true)
+      setError('Sin conexión con el backend. Mostrando datos de demostración.')
+      setEvents((prev) => (prev.length > 0 ? prev : DEMO_EVENTS))
+    } finally {
+      setLoading(false)
     }
+  }, [filters])
+
+  useEffect(() => {
     loadEvents()
     const interval = setInterval(loadEvents, 5 * 60 * 1000)
     return () => clearInterval(interval)
-  }, [filters])
+  }, [loadEvents])
+
+  // El aviso de backend se oculta solo a los 9 s
+  useEffect(() => {
+    if (!error) return
+    setShowErrorToast(true)
+    const t = setTimeout(() => setShowErrorToast(false), 9000)
+    return () => clearTimeout(t)
+  }, [error])
+
+  /* ---------- Filtrado local (también en modo demo) ---------- */
+  const visibleEvents = useMemo(() => {
+    if (!demo) return events
+    const now = Date.now()
+    const windowMs = filters.timeRange === '1h' ? 3_600_000 : filters.timeRange === '24h' ? 86_400_000 : 604_800_000
+    return events.filter(
+      (e) => filters.types.includes(e.type) && now - new Date(e.detectedAt).getTime() <= windowMs
+    )
+  }, [events, demo, filters])
 
   return (
-    <div className="flex flex-col h-screen bg-bg text-slate-200 antialiased overflow-hidden">
-      {/* Ambient lighting blobs — SerQ reference */}
-      <div className="ambient a1" />
-      <div className="ambient a2" />
-      <div className="ambient a3" />
-
-      <div className="absolute inset-0 bg-grid-sm opacity-[0.085] pointer-events-none" />
-
+    <div className="relative flex flex-col min-h-screen lg:h-screen bg-[#0b131d] text-slate-200 antialiased lg:overflow-hidden">
+      {/* Lavados de luz de fondo (se ven detrás de los paneles translúcidos) */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 z-0"
+        style={{
+          background:
+            'radial-gradient(900px 520px at 12% -8%, rgba(34,211,238,.07), transparent 60%),' +
+            'radial-gradient(820px 520px at 100% 0%, rgba(139,92,246,.06), transparent 55%)',
+        }}
+      />
       <Header
         user={user}
-        onAuthClick={() => { setAuthMode('login'); setShowAuthModal(true) }}
-        onLogout={() => { setUser(null); setAuthToken(null); setAuthMode('login'); setShowAuthModal(true) }}
+        demo={demo}
+        onAuthClick={() => {
+          setAuthMode('login')
+          setShowAuthModal(true)
+        }}
+        onLogout={() => {
+          setUser(null)
+          setAuthToken(null)
+          setAuthMode('login')
+          setShowAuthModal(true)
+        }}
       />
 
-      <div className="relative flex flex-1 overflow-hidden p-4 gap-4">
-        {error && (
-          <div className="absolute top-20 left-4 right-4 max-w-md glass border border-severity-critical/50 rounded-xl p-4 text-sm flex items-center gap-3 animate-fade-in z-50 shadow-glow-red">
-            <span className="text-severity-critical text-lg">⚠️</span>
-            <span>{error}</span>
-          </div>
-        )}
+      <div className="relative z-10 flex flex-col lg:flex-row flex-1 min-h-0 gap-3 p-3">
+        {/* ---------- Mapa ---------- */}
+        <section className="relative h-[46vh] min-h-[300px] lg:h-auto lg:flex-1 lg:min-h-0">
+          <div className="panel w-full h-full overflow-hidden">
+            {mapMode === '2d' ? (
+              <Map
+                events={visibleEvents}
+                selectedEvent={selectedEvent}
+                onSelectEvent={setSelectedEvent}
+                loading={loading}
+              />
+            ) : (
+              <Map3D
+                events={visibleEvents}
+                selectedEvent={selectedEvent}
+                onSelectEvent={setSelectedEvent}
+              />
+            )}
+            <EventDetailCard event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+            {/* Toggle 2D/3D */}
+            <div className="absolute top-2.5 right-2.5 z-10 flex gap-1 p-1 bg-surfaceElev/80 border border-border rounded-lg backdrop-blur-md">
+              <button
+                onClick={() => setMapMode('2d')}
+                className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${
+                  mapMode === '2d'
+                    ? 'bg-[#38bdf8]/15 text-[#38bdf8] border border-[#38bdf8]/30'
+                    : 'text-slate-400 hover:text-slate-300'
+                }`}
+              >
+                2D
+              </button>
+              <button
+                onClick={() => setMapMode('3d')}
+                className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${
+                  mapMode === '3d'
+                    ? 'bg-[#38bdf8]/15 text-[#38bdf8] border border-[#38bdf8]/30'
+                    : 'text-slate-400 hover:text-slate-300'
+                }`}
+              >
+                3D
+              </button>
+            </div>
 
-        <div className="flex-1 relative">
-          <div className="w-full h-full rounded-2xl overflow-hidden glass-dark border border-border">
-            <Map
-              events={events}
+            {/* Aviso de backend (se oculta solo a los 9 s) */}
+            <AnimatePresence>
+              {error && showErrorToast && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="absolute left-1/2 -translate-x-1/2 top-4 z-50 flex items-center gap-2.5
+                             max-w-[min(88%,420px)] px-3 py-2 rounded-xl text-[11.5px] text-amber-200
+                             bg-[#2a2114]/95 border border-amber-400/30 backdrop-blur-md
+                             shadow-[0_16px_40px_-16px_rgba(0,0,0,.9)]"
+                >
+                  <WifiOff className="w-3.5 h-3.5 shrink-0" />
+                  <span className="leading-snug">{error}</span>
+                  <button
+                    onClick={() => setShowErrorToast(false)}
+                    className="ml-1 text-amber-300/70 hover:text-amber-200"
+                    aria-label="Cerrar aviso"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </section>
+
+        {/* ---------- Panel lateral ---------- */}
+        <aside className="w-full lg:w-[404px] shrink-0 h-[58vh] min-h-[420px] lg:h-auto lg:min-h-0">
+          <div className="panel w-full h-full overflow-hidden flex flex-col">
+            <Dashboard
+              events={visibleEvents}
               selectedEvent={selectedEvent}
               onSelectEvent={setSelectedEvent}
+              filters={filters}
+              onFiltersChange={setFilters}
               loading={loading}
+              demo={demo}
             />
           </div>
-        </div>
-
-        <div className="w-[420px] flex flex-col glass-dark border border-border rounded-2xl overflow-hidden">
-          <Dashboard
-            events={events}
-            selectedEvent={selectedEvent}
-            onSelectEvent={setSelectedEvent}
-            filters={filters}
-            onFiltersChange={setFilters}
-            loading={loading}
-          />
-        </div>
+        </aside>
       </div>
 
       <AuthModal

@@ -1,6 +1,19 @@
-import { useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, Filter, Clock, AlertTriangle, Zap, Thermometer, Wind } from 'lucide-react'
+import {
+  Search,
+  Clock,
+  Filter,
+  ChevronDown,
+  Activity,
+  Radio,
+  Activity as WaveIcon,
+  Wind,
+  Waves,
+  CloudRain,
+  Mountain,
+  Flame,
+} from 'lucide-react'
 import { DisasterEvent, DisasterType } from '../types'
 import { Sparkline, DonutChart } from './Sparkline'
 
@@ -14,75 +27,47 @@ interface DashboardProps {
   }
   onFiltersChange: (filters: any) => void
   loading: boolean
+  demo?: boolean
 }
 
-const DISASTER_TYPES: { type: DisasterType; label: string; icon: React.ReactNode }[] = [
-  { type: 'earthquake', label: 'Terremotos', icon: <Thermometer className="w-3 h-3" /> },
-  { type: 'storm', label: 'Tormentas', icon: <Wind className="w-3 h-3" /> },
-  { type: 'flood', label: 'Inundaciones', icon: <Zap className="w-3 h-3" /> },
-  { type: 'rain', label: 'Lluvia', icon: <Wind className="w-3 h-3" /> },
-  { type: 'landslide', label: 'Avalanchas', icon: <AlertTriangle className="w-3 h-3" /> },
-  { type: 'volcanic', label: 'Volcánicos', icon: <Thermometer className="w-3 h-3" /> },
+const DISASTER_TYPES: { type: DisasterType; label: string; short: string }[] = [
+  { type: 'earthquake', label: 'Terremotos', short: 'Sismos' },
+  { type: 'storm', label: 'Tormentas', short: 'Tormentas' },
+  { type: 'flood', label: 'Inundaciones', short: 'Inund.' },
+  { type: 'rain', label: 'Lluvia', short: 'Lluvia' },
+  { type: 'landslide', label: 'Avalanchas', short: 'Avalan.' },
+  { type: 'volcanic', label: 'Volcánicos', short: 'Volcán' },
 ]
 
-function getSeverityClasses(severity: string) {
-  switch (severity) {
-    case 'critical':
-      return {
-        bg: 'bg-severity-critical/15',
-        border: 'border-severity-critical/40',
-        text: 'text-severity-critical',
-        icon: '🔴',
-        glow: 'shadow-glow-red',
-        color: '#ff4d4d',
-      }
-    case 'high':
-      return {
-        bg: 'bg-severity-high/15',
-        border: 'border-severity-high/40',
-        text: 'text-severity-high',
-        icon: '🟠',
-        glow: 'shadow-glow-orange',
-        color: '#ff8a3d',
-      }
-    case 'medium':
-      return {
-        bg: 'bg-severity-medium/15',
-        border: 'border-severity-medium/40',
-        text: 'text-severity-medium',
-        icon: '🟡',
-        glow: 'shadow-glow-blue',
-        color: '#2fa8ff',
-      }
-    case 'low':
-      return {
-        bg: 'bg-severity-low/15',
-        border: 'border-severity-low/40',
-        text: 'text-severity-low',
-        icon: '🔵',
-        glow: 'shadow-glow-green',
-        color: '#25d07d',
-      }
-    default:
-      return {
-        bg: 'bg-slate-500/15',
-        border: 'border-slate-500/40',
-        text: 'text-slate-400',
-        icon: '⚪',
-        glow: '',
-        color: '#64748b',
-      }
-  }
+const SEVERITY = {
+  critical: { color: '#f87171', label: 'CRÍTICO', bg: 'bg-red-400/10', text: 'text-red-300', border: 'border-red-400/30' },
+  high: { color: '#fb923c', label: 'ALTO', bg: 'bg-orange-400/10', text: 'text-orange-300', border: 'border-orange-400/30' },
+  medium: { color: '#fbbf24', label: 'MEDIO', bg: 'bg-amber-400/10', text: 'text-amber-300', border: 'border-amber-400/30' },
+  low: { color: '#38bdf8', label: 'BAJO', bg: 'bg-sky-400/10', text: 'text-sky-300', border: 'border-sky-400/30' },
+} as const
+
+const TYPE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
+  earthquake: WaveIcon,
+  storm: Wind,
+  flood: Waves,
+  rain: CloudRain,
+  landslide: Mountain,
+  volcanic: Flame,
+}
+
+function TypeIcon({ type, className }: { type: string; className?: string }) {
+  const Icon = TYPE_ICON[type] ?? Activity
+  return <Icon className={className} />
 }
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
   const minutes = Math.floor(diff / 60000)
   if (minutes < 1) return 'ahora'
-  if (minutes < 60) return `${minutes}m`
+  if (minutes < 60) return `${minutes} min`
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h`
-  return `${Math.floor(hours / 24)}d`
+  if (hours < 24) return `${hours} h`
+  return `${Math.floor(hours / 24)} d`
 }
 
 export default function Dashboard({
@@ -92,352 +77,296 @@ export default function Dashboard({
   filters,
   onFiltersChange,
   loading,
+  demo = false,
 }: DashboardProps) {
-  const [currentTime, setCurrentTime] = useState(Date.now())
+  const [query, setQuery] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
 
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(Date.now()), 30000)
-    return () => clearInterval(timer)
-  }, [])
+  const counts = useMemo(
+    () => ({
+      critical: events.filter((e) => e.severity === 'critical').length,
+      high: events.filter((e) => e.severity === 'high').length,
+      medium: events.filter((e) => e.severity === 'medium').length,
+      low: events.filter((e) => e.severity === 'low').length,
+    }),
+    [events]
+  )
+
+  const statCards = [
+    { label: 'CRÍTICOS', value: counts.critical, color: SEVERITY.critical.color, data: [1, 2, 1, 3, 1, 2, 1] },
+    { label: 'ALTOS', value: counts.high, color: SEVERITY.high.color, data: [1, 2, 3, 2, 4, 3, 4] },
+    { label: 'MEDIOS', value: counts.medium, color: SEVERITY.medium.color, data: [2, 3, 2, 4, 2, 3, 2] },
+    { label: 'BAJOS', value: counts.low, color: SEVERITY.low.color, data: [5, 7, 6, 8, 6, 7, 9] },
+  ]
+
+  // Datos de la dona
+  const donutData = DISASTER_TYPES.filter((dt) => filters.types.includes(dt.type)).map((dt) => ({
+    label: dt.label,
+    short: dt.short,
+    value: events.filter((e) => e.type === dt.type).length,
+  }))
+  const donutTotal = donutData.reduce((acc, d) => acc + d.value, 0)
+  const donutColors = ['#f87171', '#fb923c', '#38bdf8', '#fbbf24', '#a78bfa', '#f472b6']
+
+  const visibleEvents = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return events
+    return events.filter(
+      (e) =>
+        e.title.toLowerCase().includes(q) ||
+        e.description.toLowerCase().includes(q) ||
+        e.source.toLowerCase().includes(q)
+    )
+  }, [events, query])
 
   const handleTypeToggle = (type: string) => {
     const newTypes = filters.types.includes(type)
-      ? filters.types.filter(t => t !== type)
+      ? filters.types.filter((t) => t !== type)
       : [...filters.types, type]
     onFiltersChange({ ...filters, types: newTypes })
   }
 
-  const criticalCount = events.filter(e => e.severity === 'critical').length
-  const highCount = events.filter(e => e.severity === 'high').length
-  const mediumCount = events.filter(e => e.severity === 'medium').length
-  const lowCount = events.filter(e => e.severity === 'low').length
-
-  const statCards = [
-    { label: 'CRÍTICOS', value: criticalCount, severity: 'critical', color: '#ff4d4d', data: [2, 3, 1, 4, 2, 5, 3] },
-    { label: 'ALTOS', value: highCount, severity: 'high', color: '#ff8a3d', data: [1, 2, 1, 0, 2, 3, 1] },
-    { label: 'MEDIOS', value: mediumCount, severity: 'medium', color: '#2fa8ff', data: [3, 4, 2, 5, 3, 4, 2] },
-    { label: 'BAJOS', value: lowCount, severity: 'low', color: '#25d07d', data: [5, 7, 6, 5, 8, 6, 7] },
-  ]
-
-  // Donut chart data for event type distribution
-  const eventTypeCounts = DISASTER_TYPES
-    .filter(dt => filters.types.includes(dt.type))
-    .map(dt => events.filter(e => e.type === dt.type).length)
-    .filter(c => c > 0)
-  const eventTypeLabels = DISASTER_TYPES
-    .filter(dt => filters.types.includes(dt.type))
-    .map(dt => dt.label)
-  const eventTypeColors = ['#ff4d4d', '#ff8a3d', '#25d07d', '#2fa8ff', '#a855f7', '#dc2626']
-
   return (
-    <div className="flex flex-col h-full">
-      {/* Search + Stats Header */}
-      <div className="p-4 border-b border-border stagger">
-        <div className="relative mb-4">
+    <div className="flex flex-col h-full min-h-0">
+      {/* ================= Cabecera: búsqueda + KPIs ================= */}
+      <div className="shrink-0 p-3 pb-2.5">
+        <div className="relative mb-3">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           <input
             type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
             placeholder="Buscar eventos..."
-            className="w-full pl-10 pr-4 py-2.5 glass-dark border border-border rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#2fa8ff] transition"
+            className="w-full pl-9 pr-3 py-2 rounded-xl text-[12.5px] text-slate-200 placeholder-slate-500
+                       bg-[#101d2a] border border-white/[0.06]
+                       focus:outline-none focus:border-cyan-400/40 focus:ring-1 focus:ring-cyan-400/30 transition"
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3 stagger">
-          {statCards.map((card) => {
-            const sc = getSeverityClasses(card.severity)
-            return (
-              <motion.div
-                key={card.label}
-                whileHover={{ scale: 1.02 }}
-                className={`
-                  relative overflow-hidden rounded-xl p-3
-                  glass-dark border transition-all duration-200
-                  ${sc.border}
-                `}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-slate-400">{card.label}</span>
-                  <span className={`text-sm ${sc.text}`}>{sc.icon}</span>
-                </div>
-                <div className="text-2xl font-bold text-white">{card.value}</div>
-                <div className="mt-1 h-5 opacity-50">
-                  <Sparkline data={card.data} color={card.color} />
-                </div>
-              </motion.div>
-            )
-          })}
+        <div className="grid grid-cols-2 gap-2.5">
+          {statCards.map((card, i) => (
+            <motion.div
+              key={card.label}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.05 }}
+              className="card px-3 py-2 overflow-hidden"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10.5px] font-semibold tracking-[0.1em] text-slate-400">
+                  {card.label}
+                </span>
+                <span
+                  className="w-2.5 h-2.5 rounded-full"
+                  style={{ background: card.color, boxShadow: `0 0 8px ${card.color}` }}
+                />
+              </div>
+              <div className="mt-0.5 text-[23px] leading-none font-bold text-white tabular-nums">
+                {card.value}
+              </div>
+              <div className="mt-1.5 h-5">
+                <Sparkline data={card.data} color={card.color} />
+              </div>
+            </motion.div>
+          ))}
         </div>
 
-        <div className="mt-3 text-xs text-slate-400 flex items-center justify-between">
-          <span>Total: <span className="text-white font-bold">{events.length}</span> eventos activos</span>
-          <div className="flex items-center gap-2">
+        <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500">
+          <span>
+            Total:{' '}
+            <span className="text-slate-200 font-bold">{events.length}</span> eventos activos
+          </span>
+          <span className="flex items-center gap-1.5">
             <Clock className="w-3 h-3" />
-            <span>Auto-refresh cada 5 min</span>
-          </div>
+            Auto-refresh cada 5 min
+          </span>
         </div>
       </div>
 
-      {/* Donut Chart — Distribution */}
-      {eventTypeCounts.some(c => c > 0) && (
-        <div className="p-4 border-b border-border">
-          <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
-            Distribución por tipo
+      <div className="h-px shrink-0 bg-white/[0.06]" />
+
+      {/* ================= Distribución por tipo ================= */}
+      <div className="shrink-0 px-3 pt-2.5 pb-2.5">
+        <div className="flex items-center justify-between mb-1.5">
+          <h3 className="text-[10.5px] font-bold tracking-[0.16em] text-slate-400">
+            DISTRIBUCIÓN POR TIPO
           </h3>
-          <div className="glass-dark rounded-xl p-3">
-            <DonutChart
-              data={eventTypeCounts}
-              labels={eventTypeLabels}
-              colors={eventTypeColors}
-            />
+          <Activity className="w-3.5 h-3.5 text-slate-600" />
+        </div>
+        <div className="rounded-xl bg-[#101d2a] border border-white/[0.05] p-2 flex items-center gap-2">
+          <div className="relative w-[112px] h-[112px] shrink-0">
+            {donutData.some((d) => d.value > 0) ? (
+              <DonutChart
+                data={donutData.map((d) => d.value)}
+                labels={donutData.map((d) => d.label)}
+                colors={donutColors}
+              />
+            ) : (
+              <div className="h-full grid place-items-center text-[10px] text-slate-600">
+                Sin datos
+              </div>
+            )}
+            <div className="absolute inset-0 grid place-content-center pointer-events-none">
+              <span className="text-[15px] font-bold text-white leading-none tabular-nums">
+                {donutTotal}
+              </span>
+              <span className="text-[8px] uppercase tracking-wider text-slate-500 text-center mt-0.5">
+                total
+              </span>
+            </div>
           </div>
-        </div>
-      )}
 
-      {/* Filters */}
-      <div className="p-4 border-b border-border">
-        <div className="flex items-center gap-2 mb-3">
-          <Filter className="w-4 h-4 text-slate-400" />
-          <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-            Filtrar por tipo
-          </h3>
+          <ul className="flex-1 min-w-0 space-y-[3px]">
+            {donutData.map((d, i) => (
+              <li key={d.label} className="flex items-center gap-1.5 text-[10px]">
+                <span
+                  className="w-1.5 h-1.5 rounded-full shrink-0"
+                  style={{ background: donutColors[i] }}
+                />
+                <span className="flex-1 min-w-0 truncate text-slate-400">{d.short}</span>
+                <span className="text-slate-200 font-semibold tabular-nums">{d.value}</span>
+                <span className="w-7 text-right text-slate-600 tabular-nums">
+                  {donutTotal > 0 ? Math.round((d.value / donutTotal) * 100) : 0}%
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
-        <div className="grid grid-cols-3 gap-2 stagger">
-          {DISASTER_TYPES.map(({ type, label, icon }) => {
-            const isActive = filters.types.includes(type)
-            return (
-              <motion.button
-                key={type}
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => handleTypeToggle(type)}
-                className={`
-                  relative p-2.5 rounded-xl text-xs font-medium transition-all duration-200
-                  flex items-center justify-center gap-1
-                  ${isActive
-                    ? 'bg-[#2fa8ff]/15 border-[#2fa8ff]/50 text-[#7ec8ff] shadow-glow-blue'
-                      : 'glass-dark text-slate-300 hover:text-white hover:bg-surfaceElev'
-                  }
-                `}
-              >
-                {icon}
-                {label}
-              </motion.button>
-            )
-          })}
-        </div>
+      </div>
 
-        <div className="mt-4 flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-          <Clock className="w-3 h-3" />
-          Rango de tiempo
-        </div>
-        <select
-          value={filters.timeRange}
-          onChange={(e) => onFiltersChange({ ...filters, timeRange: e.target.value })}
-          className="w-full px-3 py-2 glass-dark border border-border rounded-xl text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#2fa8ff] transition"
+      <div className="h-px shrink-0 bg-white/[0.06]" />
+
+      {/* ================= Filtros (compactos) ================= */}
+      <div className="shrink-0 px-3 pt-2">
+        <button
+          onClick={() => setShowFilters((v) => !v)}
+          className="w-full flex items-center justify-between group"
         >
-          <option value="1h" className="bg-surfaceElev">Última hora</option>
-          <option value="24h" className="bg-surfaceElev">Últimas 24h</option>
-          <option value="7d" className="bg-surfaceElev">Últimos 7 días</option>
-        </select>
+          <span className="flex items-center gap-2 text-[10.5px] font-bold tracking-[0.16em] text-slate-400 group-hover:text-slate-300 transition">
+            <Filter className="w-3.5 h-3.5" />
+            FILTRAR POR TIPO
+          </span>
+          <ChevronDown
+            className={`w-3.5 h-3.5 text-slate-500 transition-transform ${showFilters ? 'rotate-180' : ''}`}
+          />
+        </button>
+
+        <AnimatePresence initial={false}>
+          {showFilters && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
+            >
+              <div className="flex flex-wrap gap-1.5 pt-2.5">
+                {DISASTER_TYPES.map(({ type, short }) => {
+                  const active = filters.types.includes(type)
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => handleTypeToggle(type)}
+                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition
+                        ${
+                          active
+                            ? 'bg-cyan-400/10 text-cyan-300 border-cyan-400/35'
+                            : 'bg-white/[0.02] text-slate-500 border-white/[0.06] hover:text-slate-300'
+                        }`}
+                    >
+                      {short}
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="flex items-center gap-2 pt-2.5">
+                {(['1h', '24h', '7d'] as const).map((range) => (
+                  <button
+                    key={range}
+                    onClick={() => onFiltersChange({ ...filters, timeRange: range })}
+                    className={`flex-1 py-1.5 rounded-lg text-[11px] border transition
+                      ${
+                        filters.timeRange === range
+                          ? 'bg-cyan-400/10 text-cyan-300 border-cyan-400/35'
+                          : 'bg-white/[0.02] text-slate-500 border-white/[0.06] hover:text-slate-300'
+                      }`}
+                  >
+                    {range === '1h' ? 'Última hora' : range === '24h' ? '24 h' : '7 días'}
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* Selected Event Detail */}
-      <AnimatePresence>
-        {selectedEvent && (
-          <motion.div
-            layoutId={`event-${selectedEvent.id}`}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="p-4 border-b border-border"
-          >
-            {(() => {
-              const classes = getSeverityClasses(selectedEvent.severity)
-              return (
-                <motion.div
-                  className={`
-                    ${classes.bg} ${classes.border} border-l-4 rounded-xl p-4
-                    ${classes.glow}
-                  `}
-                  style={{
-                    background: `linear-gradient(135deg, ${classes.color}10 0%, transparent 50%)`,
-                  }}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="font-bold text-base text-white">{selectedEvent.title}</h3>
-                    <motion.button
-                      whileHover={{ scale: 1.1 }}
-                      onClick={() => onSelectEvent(null)}
-                      className="text-slate-500 hover:text-slate-300 text-lg transition"
-                    >
-                      ✕
-                    </motion.button>
-                  </div>
-
-                  <p className="text-sm text-slate-300 mb-3 leading-relaxed">
-                    {selectedEvent.description}
-                  </p>
-
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <motion.div whileHover={{ scale: 1.02 }} className="glass-dark rounded-lg p-2">
-                      <span className="text-slate-500">Severidad</span>
-                      <div className={`font-bold mt-0.5 ${classes.text}`}>
-                        {selectedEvent.severity.toUpperCase()}
-                      </div>
-                    </motion.div>
-
-                    {selectedEvent.magnitude && (
-                      <motion.div whileHover={{ scale: 1.02 }} className="glass-dark rounded-lg p-2">
-                        <span className="text-slate-500">Magnitud</span>
-                        <div className="font-bold text-white mt-0.5">
-                          M {selectedEvent.magnitude.toFixed(1)}
-                        </div>
-                      </motion.div>
-                    )}
-
-                    <motion.div whileHover={{ scale: 1.02 }} className="glass-dark rounded-lg p-2 col-span-2">
-                      <span className="text-slate-500">Coordenadas</span>
-                      <div className="font-mono text-xs text-slate-300 mt-0.5">
-                        {selectedEvent.latitude.toFixed(4)}, {selectedEvent.longitude.toFixed(4)}
-                      </div>
-                    </motion.div>
-
-                    <motion.div whileHover={{ scale: 1.02 }} className="glass-dark rounded-lg p-2">
-                      <span className="text-slate-500">Fuente</span>
-                      <div className="font-bold text-cyan-400 mt-0.5 uppercase">
-                        {selectedEvent.source}
-                      </div>
-                    </motion.div>
-
-                    <motion.div whileHover={{ scale: 1.02 }} className="glass-dark rounded-lg p-2">
-                      <span className="text-slate-500">Detectado</span>
-                      <div className="font-mono text-xs text-slate-300 mt-0.5">
-                        {new Date(selectedEvent.detectedAt).toLocaleTimeString('es-ES', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          hour12: false,
-                        })}
-                      </div>
-                    </motion.div>
-                  </div>
-                </motion.div>
-              )
-            })()}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Events List */}
-      <div className="flex-1 overflow-y-auto">
+      {/* ================= Lista de eventos ================= */}
+      <div className="flex-1 min-h-[96px] overflow-y-auto px-3 py-2">
         {loading ? (
-          <div className="p-4 text-center">
-            <div className="inline-block animate-spin w-6 h-6 border-2 border-[#2fa8ff] border-t-transparent rounded-full" />
-            <p className="mt-2 text-sm text-slate-400">Cargando eventos...</p>
+          <div className="py-10 flex flex-col items-center gap-3">
+            <div className="w-6 h-6 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+            <p className="text-[11px] text-slate-500">Cargando eventos…</p>
           </div>
-        ) : events.length === 0 ? (
-          <div className="p-6 text-center">
-            <div className="text-3xl mb-2">📭</div>
-            <p className="text-sm text-slate-400">No hay eventos para mostrar</p>
+        ) : visibleEvents.length === 0 ? (
+          <div className="py-10 flex flex-col items-center gap-2 text-slate-600">
+            <Radio className="w-6 h-6" />
+            <p className="text-[11.5px] text-slate-500">No hay eventos para mostrar</p>
           </div>
         ) : (
-          <motion.div
-            className="p-3 space-y-2 stagger"
-            initial="hide"
-            animate="show"
-            variants={{
-              hide: { opacity: 1 },
-              show: {
-                opacity: 1,
-                transition: {
-                  staggerChildren: 0.03,
-                },
-              },
-            }}
-          >
-            {events.map((event, idx) => {
-              const classes = getSeverityClasses(event.severity)
-              const elapsed = timeAgo(event.detectedAt)
+          <div className="space-y-1.5">
+            {visibleEvents.map((event, idx) => {
+              const sev = SEVERITY[event.severity as keyof typeof SEVERITY] ?? SEVERITY.low
+              const isSelected = selectedEvent?.id === event.id
               return (
-                <motion.div
+                <motion.button
                   key={event.id}
-                  layoutId={`event-${event.id}`}
-                  initial={{ opacity: 0, x: -20 }}
+                  initial={{ opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: idx * 0.03 }}
+                  transition={{ delay: Math.min(idx * 0.015, 0.3) }}
                   onClick={() => onSelectEvent(event)}
-                  className={`
-                    relative cursor-pointer rounded-xl p-3 border transition-all duration-200 overflow-hidden group
-                    ${selectedEvent?.id === event.id
-                      ? 'bg-[#2fa8ff]/15 border-[#2fa8ff]/50 shadow-glow-blue'
-                      : 'glass-dark border-border hover:bg-surfaceElev hover:border-borderHover'
-                    }
-                    ${selectedEvent?.id !== event.id ? classes.border : ''}
-                  `}
+                  className={`w-full text-left rounded-xl px-2.5 py-1.5 border transition group
+                    ${
+                      isSelected
+                        ? 'bg-cyan-400/[0.07] border-cyan-400/40'
+                        : 'bg-white/[0.02] border-white/[0.05] hover:bg-white/[0.04] hover:border-white/10'
+                    }`}
                 >
-                  <div className="flex justify-between items-start mb-1">
-                    <div className="flex items-center gap-2">
-                      <span className={`text-lg ${classes.text}`}>{classes.icon}</span>
-                      <h4
-                        className={`font-semibold text-sm line-clamp-1 transition-colors ${
-                          selectedEvent?.id === event.id
-                            ? 'text-[#7ec8ff]'
-                            : 'text-slate-200 group-hover:text-slate-100'
-                        }`}
-                      >
-                        {event.title}
-                      </h4>
-                    </div>
+                  <div className="flex items-center gap-2">
+                    <TypeIcon type={event.type} className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span className="flex-1 text-[11.5px] font-medium text-slate-200 truncate group-hover:text-white">
+                      {event.title}
+                    </span>
                     <span
-                      className={`
-                        text-xs font-bold px-2 py-0.5 rounded-full
-                        ${classes.bg} ${classes.text} ${classes.border}
-                      `}
+                      className="text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded"
+                      style={{ color: sev.color, background: `${sev.color}18` }}
                     >
-                      {event.severity === 'critical' ? 'CRÍTICO' :
-                       event.severity === 'high' ? 'ALTO' :
-                       event.severity === 'medium' ? 'MEDIO' : 'BAJO'}
+                      {sev.label}
                     </span>
                   </div>
-
-                  <p className="text-xs text-slate-400 mb-2 line-clamp-2">
-                    {event.description}
-                  </p>
-
-                  <div className="flex items-center justify-between text-xs text-slate-500">
-                    <div className="flex items-center gap-3">
-                      {event.magnitude && (
-                        <span className="flex items-center gap-1">
-                          📊 M: {event.magnitude.toFixed(1)}
-                        </span>
-                      )}
-                      <span className="font-mono">{elapsed}</span>
-                    </div>
-                    <span className="text-slate-600">
-                      {event.source.toUpperCase()}
+                  <div className="flex items-center justify-between mt-1 pl-[21px] text-[10px] text-slate-500">
+                    <span className="flex items-center gap-2">
+                      <span className="font-mono">{timeAgo(event.detectedAt)}</span>
+                      {event.magnitude && <span>M {event.magnitude.toFixed(1)}</span>}
                     </span>
+                    <span className="uppercase tracking-wide">{event.source}</span>
                   </div>
-
-                  <div className="mt-2 h-1 rounded-full overflow-hidden bg-border">
-                    <div
-                      className="h-full rounded-full transition-all duration-300"
-                      style={{
-                        width: event.severity === 'critical' ? '100%' :
-                               event.severity === 'high' ? '75%' :
-                               event.severity === 'medium' ? '50%' : '25%',
-                        backgroundColor: classes.color,
-                      }}
-                    />
-                  </div>
-                </motion.div>
+                </motion.button>
               )
             })}
-          </motion.div>
+          </div>
         )}
       </div>
 
-      {/* Footer */}
-      <div className="p-3 border-t border-border glass-dark text-xs text-slate-400 text-center">
-        <p>Actualización cada 5 min · {events.length} eventos activos · Última sync: {new Date(currentTime).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false })}</p>
+      {/* ================= Pie ================= */}
+      <div className="px-3 py-1.5 border-t border-white/[0.06] flex items-center justify-between text-[10px] text-slate-500">
+        <span className="flex items-center gap-1.5">
+          <Radio className="w-3 h-3 text-cyan-400" />
+          {demo ? 'Datos de demostración' : 'Fuentes en vivo'}
+        </span>
+        <span>
+          {loading ? 'Sincronizando…' : `${visibleEvents.length} eventos · act. ${timeAgo(new Date().toISOString())}`}
+        </span>
       </div>
     </div>
   )

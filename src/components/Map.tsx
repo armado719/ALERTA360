@@ -1,13 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { Search, Target } from 'lucide-react'
-import {
-  MapContainer,
-  TileLayer,
-  Marker,
-  Popup,
-  useMap,
-} from 'react-leaflet'
+import { Search, Crosshair, Plus, Minus } from 'lucide-react'
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import { DisasterEvent } from '../types'
 
@@ -18,63 +12,52 @@ interface MapProps {
   loading: boolean
 }
 
-// --- Map tile: dark premium (ESRI Dark Gray Canvas — gratis, sin API key) ---
-const TILE_URL = 'https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'
-const TILE_ATTR = '&copy; <a href="https://www.esri.com/">Esri</a> &copy; <a href="https://openstreetmap.org">OpenStreetMap</a>'
+// --- Teselas oscuras sin API key (Esri Dark Gray Canvas) ---
+const TILE_URL =
+  'https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'
+const TILE_ATTR = 'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, OpenStreetMap'
 
-// --- Marker config ---
+// --- Configuración visual por severidad ---
 function getSeverityConfig(severity: string) {
   switch (severity) {
     case 'critical':
-      return { color: '#ff4d4d', size: 28, pulse: true, label: 'CRÍTICO' }
+      return { color: '#f87171', size: 30, animated: true, label: 'CRÍTICO' }
     case 'high':
-      return { color: '#ff8a3d', size: 24, pulse: true, label: 'ALTO' }
+      return { color: '#fb923c', size: 26, animated: true, label: 'ALTO' }
     case 'medium':
-      return { color: '#2fa8ff', size: 20, pulse: false, label: 'MEDIO' }
+      return { color: '#fbbf24', size: 22, animated: true, label: 'MEDIO' }
     case 'low':
-      return { color: '#25d07d', size: 18, pulse: false, label: 'BAJO' }
+      return { color: '#38bdf8', size: 18, animated: false, label: 'BAJO' }
     default:
-      return { color: '#64748b', size: 18, pulse: false, label: 'NORMAL' }
+      return { color: '#64748b', size: 18, animated: false, label: 'NORMAL' }
   }
 }
 
-function getIconLetter(type: string): string {
-  switch (type) {
-    case 'earthquake': return '🌍'
-    case 'storm': return '⛈️'
-    case 'flood': return '🌊'
-    case 'rain': return '🌧️'
-    case 'landslide': return '🏔️'
-    case 'volcanic': return '🌋'
-    default: return '⚠️'
-  }
-}
-
-function createCustomIcon(event: DisasterEvent): L.DivIcon {
+function createCustomIcon(event: DisasterEvent, selected: boolean): L.DivIcon {
   const cfg = getSeverityConfig(event.severity)
-  const iconHtml = `
-    <div class="relative flex items-center justify-center">
-      <div class="absolute inset-0 rounded-full"
-           style="background-color: ${cfg.color}; width: ${cfg.size + 8}px; height: ${cfg.size + 8}px;
-                  box-shadow: 0 0 8px ${cfg.color}, 0 0 16px ${cfg.color};
-                  ${cfg.pulse ? 'animation: pulse 1.5s ease-in-out infinite;' : ''}"></div>
-      <div class="relative flex items-center justify-center rounded-full border-2 border-white"
-           style="background-color: ${cfg.color}; width: ${cfg.size}px; height: ${cfg.size}px;
-                  box-shadow: 0 0 12px ${cfg.color};">
-        <span style="font-size: ${cfg.size / 2.4}px; pointer-events: none;">${getIconLetter(event.type)}</span>
+  const size = selected ? cfg.size + 8 : cfg.size
+
+  const html = `
+    <div class="a360-wrap">
+      <div class="a360-marker ${selected ? 'is-selected' : ''} ${cfg.animated ? '' : 'is-static'}"
+           style="--c:${cfg.color}">
+        <span class="a360-halo"></span>
+        ${cfg.animated ? '<span class="a360-ring"></span><span class="a360-ring"></span>' : ''}
+        <span class="a360-dot"></span>
       </div>
     </div>
   `
+
   return L.divIcon({
-    html: iconHtml,
-    className: 'alerta360-marker',
-    iconSize: [cfg.size + 8, cfg.size + 8],
-    iconAnchor: [(cfg.size + 8) / 2, (cfg.size + 8) / 2],
-    popupAnchor: [0, -12],
+    html,
+    className: 'a360-wrap',
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2],
   })
 }
 
-// Auto-fit map bounds to all events
+// Auto-encuadre inicial
 function FitBounds({ events }: { events: DisasterEvent[] }) {
   const map = useMap()
   const hasFit = useRef(false)
@@ -85,7 +68,7 @@ function FitBounds({ events }: { events: DisasterEvent[] }) {
         events.map((e) => [e.latitude, e.longitude] as [number, number])
       )
       if (bounds.isValid()) {
-        map.fitBounds(bounds, { padding: [80, 80], maxZoom: 5 })
+        map.fitBounds(bounds, { padding: [70, 70], maxZoom: 4 })
         hasFit.current = true
       }
     }
@@ -94,41 +77,39 @@ function FitBounds({ events }: { events: DisasterEvent[] }) {
   return null
 }
 
-// Connection lines between nearby events of the same type
+// Líneas de conexión sutiles entre eventos del mismo tipo
 function EventConnections({ events }: { events: DisasterEvent[] }) {
   const map = useMap()
 
   useEffect(() => {
     const group = L.featureGroup().addTo(map)
+    const maxPairs = 400
+    let pairs = 0
 
-    // Draw lines between events of same type within 500km
-    for (let i = 0; i < events.length; i++) {
-      for (let j = i + 1; j < events.length; j++) {
+    for (let i = 0; i < events.length && pairs < maxPairs; i++) {
+      for (let j = i + 1; j < events.length && pairs < maxPairs; j++) {
         const a = events[i]
         const b = events[j]
         if (a.type !== b.type) continue
 
         const dist = Math.sqrt(
-          Math.pow(a.latitude - b.latitude, 2) +
-          Math.pow(a.longitude - b.longitude, 2)
+          Math.pow(a.latitude - b.latitude, 2) + Math.pow(a.longitude - b.longitude, 2)
         )
-
-        // Only connect if within ~5 degrees (~500km)
-        if (dist > 0.5 && dist < 5) {
-          const cfg = getSeverityConfig(a.severity)
+        if (dist > 0.4 && dist < 4) {
           L.polyline(
             [
               [a.latitude, a.longitude],
               [b.latitude, b.longitude],
             ],
             {
-              color: cfg.color,
-              weight: 1.5,
-              opacity: 0.3,
-              dashArray: '5, 5',
+              color: '#38bdf8',
+              weight: 1,
+              opacity: 0.14,
+              dashArray: '4, 7',
               lineCap: 'round',
             }
           ).addTo(group)
+          pairs++
         }
       }
     }
@@ -141,43 +122,6 @@ function EventConnections({ events }: { events: DisasterEvent[] }) {
   return null
 }
 
-// Center crosshair
-function Crosshair() {
-  return (
-    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10">
-      <div className="w-5 h-5 rounded-full border border-slate-500/30 animate-pulse" />
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-0.5 h-5 -translate-y-1 bg-slate-500/20" />
-      <div className="absolute top-1/2 left-0 -translate-y-1/2 w-5 h-0.5 bg-slate-500/20" />
-    </div>
-  )
-}
-
-// Map controls: zoom to fit, reset
-function MapControls({ onFitBounds, onReset }: { onFitBounds: () => void; onReset: () => void }) {
-  return (
-    <div className="absolute top-4 right-4 z-40 flex flex-col gap-2">
-      <motion.button
-        whileHover={{ scale: 1.08 }}
-        whileTap={{ scale: 0.95 }}
-        onClick={onFitBounds}
-        className="glass-dark border border-border text-slate-300 hover:text-cyan-400 hover:border-cyan-400/50 rounded-xl p-2.5 transition-all duration-200 shadow-glow-cyan"
-        title="Ajustar vista a todos los eventos"
-      >
-        <Search className="w-4 h-4" />
-      </motion.button>
-      <motion.button
-        whileHover={{ scale: 1.08 }}
-        whileTap={{ scale: 0.95 }}
-        onClick={onReset}
-        className="glass-dark border border-border text-slate-300 hover:text-slate-100 hover:border-borderHover rounded-xl p-2.5 transition-all duration-200"
-        title="Restablecer vista"
-      >
-        <Target className="w-4 h-4" />
-      </motion.button>
-    </div>
-  )
-}
-
 export default function Map({ events, selectedEvent, onSelectEvent, loading }: MapProps) {
   const mapRef = useRef<L.Map | null>(null)
 
@@ -187,118 +131,159 @@ export default function Map({ events, selectedEvent, onSelectEvent, loading }: M
       const bounds = L.latLngBounds(
         events.map((e) => [e.latitude, e.longitude] as [number, number])
       )
-      if (bounds.isValid()) {
-        map.fitBounds(bounds, { padding: [80, 80], maxZoom: 5 })
-      }
+      if (bounds.isValid()) map.fitBounds(bounds, { padding: [70, 70], maxZoom: 4 })
     }
   }
 
   const handleReset = () => {
-    const map = mapRef.current
-    if (map) {
-      map.setView([0, 0], 3, { animate: true })
-    }
+    mapRef.current?.setView([20, 10], 2, { animate: true })
   }
 
   return (
     <div className="relative w-full h-full">
-      {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-surfaceElev/60 backdrop-blur-sm z-10">
-          <div className="glass-dark rounded-2xl p-6 flex items-center gap-4 shadow-2xl">
-            <div className="animate-spin w-6 h-6 border-2 border-cyan-400 border-t-transparent rounded-full" />
-            <span className="text-slate-300">Cargando eventos...</span>
-          </div>
-        </div>
-      )}
-
+      {/* ---------- Mapa ---------- */}
       <MapContainer
-        center={[0, 0]}
-        zoom={2.5}
+        center={[20, 10]}
+        zoom={2}
         minZoom={1.5}
-        maxZoom={10}
+        maxZoom={16}
         style={{ width: '100%', height: '100%' }}
         ref={mapRef}
         zoomControl={false}
         attributionControl={false}
         className="z-0"
       >
-        {/* Dark premium tile layer */}
-        <TileLayer
-          url={TILE_URL}
-          attribution={TILE_ATTR}
-          maxZoom={19}
-          tileSize={256}
-        />
+        <TileLayer url={TILE_URL} attribution={TILE_ATTR} maxZoom={19} />
 
-        {/* Custom zoom control */}
-        <div className="leaflet-top leaflet-control z-40" style={{ marginTop: '60px' }}>
-          <div className="flex flex-col glass-dark border border-border rounded-xl overflow-hidden">
-            <button
-              className="w-10 h-10 flex items-center justify-center text-slate-300 hover:text-cyan-400 hover:bg-surfaceElev transition"
-              onClick={() => mapRef.current?.zoomIn()}
-              title="Acercar"
-            >
-              +
-            </button>
-            <div className="w-10 h-px bg-border" />
-            <button
-              className="w-10 h-10 flex items-center justify-center text-slate-300 hover:text-cyan-400 hover:bg-surfaceElev transition"
-              onClick={() => mapRef.current?.zoomOut()}
-              title="Alejar"
-            >
-              −
-            </button>
-          </div>
-        </div>
-
-        {/* Fit bounds + connections */}
         <FitBounds events={events} />
         <EventConnections events={events} />
 
-        {/* Custom markers */}
-        {events.map((event) => {
-          const icon = createCustomIcon(event)
-          return (
-            <Marker
-              key={event.id}
-              position={[event.latitude, event.longitude]}
-              icon={icon}
-              eventHandlers={{
-                click: () => onSelectEvent(event),
-              }}
-              title={event.title}
-              zIndexOffset={selectedEvent?.id === event.id ? 1000 : 0}
-            >
-              <Popup>
-                <div className="p-1 min-w-[240px]">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xl">{getIconLetter(event.type)}</span>
-                    <h4 className="font-bold text-sm text-white">{event.title}</h4>
-                  </div>
-                  <p className="text-xs text-slate-300 mb-2 leading-relaxed">
-                    {event.description}
-                  </p>
-                  {event.magnitude && (
-                    <div className="text-xs text-slate-400 mb-1">
-                      <strong className="text-slate-300">Magnitud:</strong> {event.magnitude.toFixed(1)}
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between text-xs text-slate-400 mt-2 pt-2 border-t border-border">
-                    <span>{event.source}</span>
-                    <span>{new Date(event.detectedAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
+        {events.map((event) => (
+          <Marker
+            key={event.id}
+            position={[event.latitude, event.longitude]}
+            icon={createCustomIcon(event, selectedEvent?.id === event.id)}
+            eventHandlers={{ click: () => onSelectEvent(event) }}
+            title={event.title}
+            zIndexOffset={selectedEvent?.id === event.id ? 1000 : 0}
+          >
+            <Popup>
+              <div className="min-w-[250px]">
+                <div className="flex items-start gap-2 mb-2">
+                  <span
+                    className="mt-0.5 w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ background: getSeverityConfig(event.severity).color, boxShadow: `0 0 8px ${getSeverityConfig(event.severity).color}` }}
+                  />
+                  <div>
+                    <h4 className="font-bold text-[13px] text-white leading-snug">{event.title}</h4>
+                    <span
+                      className="text-[10px] font-bold uppercase tracking-wider"
+                      style={{ color: getSeverityConfig(event.severity).color }}
+                    >
+                      {getSeverityConfig(event.severity).label}
+                    </span>
                   </div>
                 </div>
-              </Popup>
-            </Marker>
-          )
-        })}
+                <p className="text-[11.5px] text-slate-400 leading-relaxed mb-2">
+                  {event.description}
+                </p>
+                <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-white/10">
+                  <span className="font-mono">{event.source}</span>
+                  <span>
+                    {new Date(event.detectedAt).toLocaleTimeString('es-ES', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: false,
+                    })}
+                  </span>
+                </div>
+              </div>
+            </Popup>
+          </Marker>
+        ))}
       </MapContainer>
 
-      {/* Crosshair overlay */}
-      <Crosshair />
+      {/* ---------- Tinte azulado sobre el mapa ---------- */}
+      <div className="absolute inset-0 z-[5] pointer-events-none bg-[#0b2136]/25 mix-blend-screen" />
 
-      {/* Map Controls */}
-      <MapControls onFitBounds={handleFitBounds} onReset={handleReset} />
+      {/* ---------- Retícula central ---------- */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10 opacity-40">
+        <div className="relative w-6 h-6">
+          <div className="absolute inset-0 rounded-full border border-slate-500/40" />
+          <div className="absolute left-1/2 top-1/2 w-[1px] h-3 -translate-x-1/2 -translate-y-[26px] bg-slate-500/30" />
+          <div className="absolute left-1/2 top-1/2 w-[1px] h-3 -translate-x-1/2 translate-y-[14px] bg-slate-500/30" />
+          <div className="absolute top-1/2 left-1/2 h-[1px] w-3 -translate-y-1/2 -translate-x-[26px] bg-slate-500/30" />
+          <div className="absolute top-1/2 left-1/2 h-[1px] w-3 -translate-y-1/2 translate-x-[14px] bg-slate-500/30" />
+        </div>
+      </div>
+
+      {/* ---------- Zoom (arriba-izquierda, como el mockup) ---------- */}
+      <motion.div
+        initial={{ opacity: 0, x: -8 }}
+        animate={{ opacity: 1, x: 0 }}
+        className="absolute top-4 left-4 z-30 flex flex-col rounded-xl overflow-hidden
+                   bg-[#0e1a26]/85 backdrop-blur-md border border-white/10
+                   shadow-[0_10px_30px_-10px_rgba(0,0,0,.8)]"
+      >
+        <button
+          onClick={() => mapRef.current?.zoomIn()}
+          title="Acercar"
+          className="w-9 h-9 grid place-items-center text-slate-300 hover:text-cyan-300 hover:bg-white/5 transition"
+        >
+          <Plus className="w-4 h-4" />
+        </button>
+        <div className="h-px bg-white/10" />
+        <button
+          onClick={() => mapRef.current?.zoomOut()}
+          title="Alejar"
+          className="w-9 h-9 grid place-items-center text-slate-300 hover:text-cyan-300 hover:bg-white/5 transition"
+        >
+          <Minus className="w-4 h-4" />
+        </button>
+      </motion.div>
+
+      {/* ---------- Acciones (arriba-derecha) ---------- */}
+      <div className="absolute top-4 right-4 z-30 flex flex-col gap-2">
+        <motion.button
+          whileHover={{ scale: 1.06 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={handleFitBounds}
+          title="Ajustar vista a todos los eventos"
+          className="w-9 h-9 grid place-items-center rounded-xl
+                     bg-[#0e1a26]/85 backdrop-blur-md border border-white/10
+                     text-slate-300 hover:text-cyan-300 hover:border-cyan-300/40
+                     shadow-[0_10px_30px_-10px_rgba(0,0,0,.8)] transition-colors"
+        >
+          <Search className="w-4 h-4" />
+        </motion.button>
+        <motion.button
+          whileHover={{ scale: 1.06 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={handleReset}
+          title="Restablecer vista"
+          className="w-9 h-9 grid place-items-center rounded-xl
+                     bg-[#0e1a26]/85 backdrop-blur-md border border-white/10
+                     text-slate-300 hover:text-slate-100 hover:border-white/25
+                     shadow-[0_10px_30px_-10px_rgba(0,0,0,.8)] transition-colors"
+        >
+          <Crosshair className="w-4 h-4" />
+        </motion.button>
+      </div>
+
+      {/* ---------- Atribución discreta ---------- */}
+      <div className="absolute bottom-2 right-3 z-20 text-[9px] text-slate-600/80 pointer-events-none">
+        © Esri · OpenStreetMap
+      </div>
+
+      {/* ---------- Overlay de carga ---------- */}
+      {loading && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#0b131d]/55 backdrop-blur-[2px]">
+          <div className="flex items-center gap-3 px-5 py-3.5 rounded-2xl bg-[#13202e]/90 border border-white/10 shadow-2xl">
+            <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm text-slate-300">Cargando eventos…</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

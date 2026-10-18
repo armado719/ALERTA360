@@ -14,7 +14,50 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 
 ## 🗓️ Historial de Cambios
 
-### **2026-10-17 — UI Premium con Chart.js, Lucide, Framer Motion**
+### **2026-10-17 — UI Premium SerQ Glassmorphism + Map Tile Fix + Alerta360 UI Redesign + Map3D 3D Integration**
+#### Cambios Realizados:
+- ✅ **Map tile fix** — Reemplazados tiles CARTO (que ahora requieren API key) por ESRI Dark Gray Canvas (gratis, verificado HTTP 200): `https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`
+- ✅ **`tailwind.config.js`** — Paleta SerQ premium aplicada: `bg #04060b`, `txt #e9eef8`, `orange #ff5b1f/#ff8a3d`, `blue #2fa8ff`, `green #25d07d`, `red #ff4d4d`. Severidades actualizadas: critical→red, high→orange, medium→blue, low→green. Glows actualizados a la paleta SerQ.
+- ✅ **`src/index.css`** — Background con radial gradients ambientales (3 gradientes de color sobre fondo #04060b). Glassmorphism rediseñado: gradiente lineal 180° de fondo, border highlight ::before, blur 16px, back shadow 24/60px. Mapa Leaflet dark theme actualizado (#04060b). Popups con mismo estilo glass premium.
+- ✅ **`src/App.tsx`** — Background cambiado a `bg-bg` (#04060b). Añadidos 3 blobs de luz ambiental (`.ambient.a1/a2/a3`). Grid overlay opacidad reducida de 30% a 8.5%.
+- ✅ **`src/components/Map.tsx`** — Colores de marcadores actualizados a paleta SerQ. Lucide icons reemplazando emojis en controles.
+- ✅ **`src/components/Dashboard.tsx`** — Todos los colores hex hardcoded actualizados (severity colors, stat cards, eventTypeColors). Referencias Tailwind `cyan-*` reemplazadas por equivalentes SerQ blue (#2fa8ff). Ring/focus/spinner actualizados.
+- ✅ **`src/components/Sparkline.tsx`** — Tooltip/donut background colors, title/body colors actualizados a paleta SerQ.
+
+#### Estado:
+- ✅ Type-check: 0 errores
+- ✅ Dev server: HTTP 200 (tiles ESRI verificados HTTP 200, image/jpeg)
+- ✅ Commit 7adeb82 pushado a GitHub
+
+### **2026-10-17 — Alerta360 UI Redesign Integration**
+#### Cambios Realizados:
+- ✅ **`alerta360-ui-redesign/`** — Paquete completo de rediseño aplicado al proyecto: paleta cooler (#0b131d bg, #0d1621 surface, #16212e surfaceElev), panel/card system con gradientes CSS, glassmorphism rediseñado, layout responsive (mobile-first).
+- ✅ **`src/index.css`** — Background radial gradient cyan/purple (#0b131d → #0d1621). Leaflet tile tint filter (`brightness(0.66) saturate(0.5) hue-rotate(178deg)`). Panel/card sistema CSS con gradientes.
+- ✅ **`src/App.tsx`** — Background #0b131d, layout responsive (`lg:flex-row`), `EventDetailCard` flotante, error toast auto-hide 9s, modo demo con fallback `DEMO_EVENTS`.
+- ✅ **`src/components/Map.tsx`** — Marcadores HUD CSS (`.a360-marker`, `.a360-halo`, `.a360-ring`, `.a360-dot` con animación pulso). Controles Lucide (Plus/Minus/Compass). Retículo central. ESRI Dark Gray Canvas con `server.arcgisonline.com` (HTTP 200 verificado).
+- ✅ **`src/components/Dashboard.tsx`** — Layout compacto, busqueda local, KPI cards, donut chart con total overlay, sección filtros colapsable. Constante SEVERITY con colores sky/amber/orange/red (#38bdf8/#fbbf24/#fb923c/#f87171).
+- ✅ **`src/components/Header.tsx`** — Reloj en vivo, IconButton component, badge de notificaciones, badge demo.
+- ✅ **`src/components/EventDetailCard.tsx`** — Nuevo componente: card flotante con animación spring, detalles de evento (coords, severidad, fuente, timestamp).
+- ✅ **`src/components/Sparkline.tsx`** — Gradient fill, Legend registration, tooltip compacto.
+- ✅ **`src/types/index.ts`** — Tipo `DisasterEvent.intensity` y `DisasterType.hurricane` verificados.
+- ✅ **`vite.config.ts`** — Añadido `allowedHosts: true`.
+
+### **2026-10-17 — Map3D Component Integration**
+#### Cambios Realizados:
+- ✅ Instalado `maplibre-gl` (dependencia abierta, sin API key).
+- ✅ `Map3D.tsx` movido de raíz a `src/components/` (fix import path `../types`).
+- ✅ Import corregido: `import maplibregl from` → `import * as maplibregl from` (ESM sin default export).
+- ✅ Removida opción `antialias: true` (no existe en tipos de maplibre-gl v5.4).
+- ✅ CSS marcadores HUD (`.a360-gl-marker`, `.a360-gl-halo`, `.a360-gl-dot`) añadido a `src/index.css`.
+- ✅ Toggle 2D/3D añadido a `src/App.tsx` (botones 2D/3D en corner superior-derecho del mapa).
+- ✅ Fuente satélite: `server.arcgisonline.com/ArcGIS/rest/services/World_Imagery` (HTTP 200 verificado, image/jpeg 13.9KB).
+- ✅ Fuente terreno: AWS Terrain Tiles `s3.amazonaws.com/elevation-tiles-prod/terrarium` (HTTP 200 verificado, image/png 76.5KB).
+- ✅ Proyección globo (`setProjection({ type: 'globe' })`), terreno 3D (DEM terrarium, exaggeration 1.25x), cielo/fog rendering.
+
+#### Estado:
+- ✅ Type-check: 0 errores (tsc --noEmit --skipLibCheck)
+
+---
 
 #### Cambios Realizados (Frontend):
 - ✅ `src/components/Sparkline.tsx` (nuevo) — Componentes Chart.js: `Sparkline` (línea con gradiente semi-transparente, tension 0.4) y `DonutChart` (donut con cortina 65%, tooltips dark theme). Registra LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, ArcElement
