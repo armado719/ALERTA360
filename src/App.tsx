@@ -59,8 +59,13 @@ function App() {
   }, [filters])
 
   return (
-    <div className="flex flex-col h-screen bg-gradient-to-b from-surface via-surfaceElev to-surface text-slate-200 antialiased overflow-hidden">
-      <div className="absolute inset-0 bg-grid-sm opacity-3 pointer-events-none" />
+    <div className="flex flex-col h-screen bg-bg text-slate-200 antialiased overflow-hidden">
+      {/* Ambient lighting blobs — SerQ reference */}
+      <div className="ambient a1" />
+      <div className="ambient a2" />
+      <div className="ambient a3" />
+
+      <div className="absolute inset-0 bg-grid-sm opacity-[0.085] pointer-events-none" />
 
       <Header
         user={user}

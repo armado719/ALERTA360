@@ -18,21 +18,21 @@ interface MapProps {
   loading: boolean
 }
 
-// --- Map tile: dark premium ---
-const TILE_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-const TILE_ATTR = '&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://openstreetmap.org">OpenStreetMap</a>'
+// --- Map tile: dark premium (ESRI Dark Gray Canvas — gratis, sin API key) ---
+const TILE_URL = 'https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'
+const TILE_ATTR = '&copy; <a href="https://www.esri.com/">Esri</a> &copy; <a href="https://openstreetmap.org">OpenStreetMap</a>'
 
 // --- Marker config ---
 function getSeverityConfig(severity: string) {
   switch (severity) {
     case 'critical':
-      return { color: '#ef4444', size: 28, pulse: true, label: 'CRÍTICO' }
+      return { color: '#ff4d4d', size: 28, pulse: true, label: 'CRÍTICO' }
     case 'high':
-      return { color: '#f97316', size: 24, pulse: true, label: 'ALTO' }
+      return { color: '#ff8a3d', size: 24, pulse: true, label: 'ALTO' }
     case 'medium':
-      return { color: '#eab308', size: 20, pulse: false, label: 'MEDIO' }
+      return { color: '#2fa8ff', size: 20, pulse: false, label: 'MEDIO' }
     case 'low':
-      return { color: '#06b6d4', size: 18, pulse: false, label: 'BAJO' }
+      return { color: '#25d07d', size: 18, pulse: false, label: 'BAJO' }
     default:
       return { color: '#64748b', size: 18, pulse: false, label: 'NORMAL' }
   }
@@ -227,8 +227,7 @@ export default function Map({ events, selectedEvent, onSelectEvent, loading }: M
           url={TILE_URL}
           attribution={TILE_ATTR}
           maxZoom={19}
-          tileSize={512}
-          zoomOffset={-1}
+          tileSize={256}
         />
 
         {/* Custom zoom control */}

@@ -34,7 +34,7 @@ function getSeverityClasses(severity: string) {
         text: 'text-severity-critical',
         icon: '🔴',
         glow: 'shadow-glow-red',
-        color: '#ef4444',
+        color: '#ff4d4d',
       }
     case 'high':
       return {
@@ -43,7 +43,7 @@ function getSeverityClasses(severity: string) {
         text: 'text-severity-high',
         icon: '🟠',
         glow: 'shadow-glow-orange',
-        color: '#f97316',
+        color: '#ff8a3d',
       }
     case 'medium':
       return {
@@ -51,8 +51,8 @@ function getSeverityClasses(severity: string) {
         border: 'border-severity-medium/40',
         text: 'text-severity-medium',
         icon: '🟡',
-        glow: 'shadow-glow-amber',
-        color: '#eab308',
+        glow: 'shadow-glow-blue',
+        color: '#2fa8ff',
       }
     case 'low':
       return {
@@ -60,8 +60,8 @@ function getSeverityClasses(severity: string) {
         border: 'border-severity-low/40',
         text: 'text-severity-low',
         icon: '🔵',
-        glow: 'shadow-glow-cyan',
-        color: '#06b6d4',
+        glow: 'shadow-glow-green',
+        color: '#25d07d',
       }
     default:
       return {
@@ -113,10 +113,10 @@ export default function Dashboard({
   const lowCount = events.filter(e => e.severity === 'low').length
 
   const statCards = [
-    { label: 'CRÍTICOS', value: criticalCount, severity: 'critical', color: '#ef4444', data: [2, 3, 1, 4, 2, 5, 3] },
-    { label: 'ALTOS', value: highCount, severity: 'high', color: '#f97316', data: [1, 2, 1, 0, 2, 3, 1] },
-    { label: 'MEDIOS', value: mediumCount, severity: 'medium', color: '#eab308', data: [3, 4, 2, 5, 3, 4, 2] },
-    { label: 'BAJOS', value: lowCount, severity: 'low', color: '#06b6d4', data: [5, 7, 6, 5, 8, 6, 7] },
+    { label: 'CRÍTICOS', value: criticalCount, severity: 'critical', color: '#ff4d4d', data: [2, 3, 1, 4, 2, 5, 3] },
+    { label: 'ALTOS', value: highCount, severity: 'high', color: '#ff8a3d', data: [1, 2, 1, 0, 2, 3, 1] },
+    { label: 'MEDIOS', value: mediumCount, severity: 'medium', color: '#2fa8ff', data: [3, 4, 2, 5, 3, 4, 2] },
+    { label: 'BAJOS', value: lowCount, severity: 'low', color: '#25d07d', data: [5, 7, 6, 5, 8, 6, 7] },
   ]
 
   // Donut chart data for event type distribution
@@ -127,7 +127,7 @@ export default function Dashboard({
   const eventTypeLabels = DISASTER_TYPES
     .filter(dt => filters.types.includes(dt.type))
     .map(dt => dt.label)
-  const eventTypeColors = ['#ef4444', '#f97316', '#06b6d4', '#eab308', '#a855f7', '#dc2626']
+  const eventTypeColors = ['#ff4d4d', '#ff8a3d', '#25d07d', '#2fa8ff', '#a855f7', '#dc2626']
 
   return (
     <div className="flex flex-col h-full">
@@ -138,7 +138,7 @@ export default function Dashboard({
           <input
             type="text"
             placeholder="Buscar eventos..."
-            className="w-full pl-10 pr-4 py-2.5 glass-dark border border-border rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"
+            className="w-full pl-10 pr-4 py-2.5 glass-dark border border-border rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#2fa8ff] transition"
           />
         </div>
 
@@ -214,8 +214,8 @@ export default function Dashboard({
                   relative p-2.5 rounded-xl text-xs font-medium transition-all duration-200
                   flex items-center justify-center gap-1
                   ${isActive
-                    ? 'bg-cyan-500/20 text-cyan-300 border-2 border-cyan-400/50 shadow-glow-cyan'
-                    : 'glass-dark text-slate-300 hover:text-white hover:bg-surfaceElev'
+                    ? 'bg-[#2fa8ff]/15 border-[#2fa8ff]/50 text-[#7ec8ff] shadow-glow-blue'
+                      : 'glass-dark text-slate-300 hover:text-white hover:bg-surfaceElev'
                   }
                 `}
               >
@@ -233,7 +233,7 @@ export default function Dashboard({
         <select
           value={filters.timeRange}
           onChange={(e) => onFiltersChange({ ...filters, timeRange: e.target.value })}
-          className="w-full px-3 py-2 glass-dark border border-border rounded-xl text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"
+          className="w-full px-3 py-2 glass-dark border border-border rounded-xl text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#2fa8ff] transition"
         >
           <option value="1h" className="bg-surfaceElev">Última hora</option>
           <option value="24h" className="bg-surfaceElev">Últimas 24h</option>
@@ -331,7 +331,7 @@ export default function Dashboard({
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="p-4 text-center">
-            <div className="inline-block animate-spin w-6 h-6 border-2 border-cyan-400 border-t-transparent rounded-full" />
+            <div className="inline-block animate-spin w-6 h-6 border-2 border-[#2fa8ff] border-t-transparent rounded-full" />
             <p className="mt-2 text-sm text-slate-400">Cargando eventos...</p>
           </div>
         ) : events.length === 0 ? (
@@ -368,7 +368,7 @@ export default function Dashboard({
                   className={`
                     relative cursor-pointer rounded-xl p-3 border transition-all duration-200 overflow-hidden group
                     ${selectedEvent?.id === event.id
-                      ? 'bg-cyan-500/15 border-cyan-400/50 shadow-glow-cyan'
+                      ? 'bg-[#2fa8ff]/15 border-[#2fa8ff]/50 shadow-glow-blue'
                       : 'glass-dark border-border hover:bg-surfaceElev hover:border-borderHover'
                     }
                     ${selectedEvent?.id !== event.id ? classes.border : ''}
@@ -380,7 +380,7 @@ export default function Dashboard({
                       <h4
                         className={`font-semibold text-sm line-clamp-1 transition-colors ${
                           selectedEvent?.id === event.id
-                            ? 'text-cyan-300'
+                            ? 'text-[#7ec8ff]'
                             : 'text-slate-200 group-hover:text-slate-100'
                         }`}
                       >

@@ -18,7 +18,7 @@ export function Sparkline({ data, color }: { data: number[]; color: string }) {
     datasets: [
       {
         data,
-        borderColor: color,
+        borderColor: 'rgba(255, 255, 255, 0.45)',
         backgroundColor: color + '30',
         borderWidth: 1.5,
         pointRadius: 0,
@@ -65,7 +65,7 @@ export function DonutChart({
       {
         data: data,
         backgroundColor: colors,
-        borderColor: 'rgba(15, 23, 42, 0.8)',
+        borderColor: 'rgba(9, 13, 21, 0.82)',
         borderWidth: 2,
         cutout: '65%',
       },
@@ -79,7 +79,7 @@ export function DonutChart({
       legend: {
         position: 'bottom' as const,
         labels: {
-          color: '#94a3b8',
+          color: '#667287',
           font: { size: 10 },
           padding: 12,
           usePointStyle: true,
@@ -90,10 +90,10 @@ export function DonutChart({
         callbacks: {
           label: (ctx: any) => `${ctx.label}: ${ctx.parsed} eventos`,
         },
-        backgroundColor: 'rgba(15, 23, 42, 0.9)',
-        borderColor: 'rgba(255, 255, 255, 0.1)',
-        titleColor: '#e2e8f0',
-        bodyColor: '#cbd5e1',
+        backgroundColor: 'rgba(9, 13, 21, 0.9)',
+          borderColor: 'rgba(255, 255, 255, 0.06)',
+          titleColor: '#e9eef8',
+          bodyColor: '#8b97aa',
         padding: 8,
         cornerRadius: 8,
         displayColors: false,

@@ -27,7 +27,12 @@ async function fetchUSGS(): Promise<USGSResponse['features']> {
   try {
     const res = await axios.get<USGSResponse>(
       'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson',
-      { timeout: 10000 }
+      {
+        timeout: 10000,
+        headers: {
+          'User-Agent': 'ALERTA360 (arc.fullstack30@gmail.com)',
+        },
+      }
     )
     return res.data.features
   } catch (error) {
@@ -88,7 +93,13 @@ async function fetchNOAA(): Promise<NOAAAlert[]> {
   try {
     const res = await axios.get<NOAAResponse>(
       'https://api.weather.gov/alerts/active',
-      { timeout: 10000 }
+      {
+        timeout: 10000,
+        headers: {
+          'User-Agent': 'ALERTA360 (arc.fullstack30@gmail.com)',
+          'Accept': 'application/geo+json',
+        },
+      }
     )
     // NOAA sometimes returns single object; normalize to array
     const features = Array.isArray(res.data.features) ? res.data.features : [res.data.features]

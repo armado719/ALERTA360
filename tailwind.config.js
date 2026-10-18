@@ -8,27 +8,40 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Core palette — midnight command center
+        // Core palette — SerQ glassmorphism premium
+        bg: '#04060b',
         surface: '#0f172a',
         surfaceElev: '#1e293b',
-        surfaceGlass: 'rgba(30, 41, 59, 0.45)',
-        border: '#334155',
-        borderHover: '#475569',
+        surfaceGlass: 'rgba(9, 13, 21, 0.76)',
+        txt: '#e9eef8',
+        muted: '#8b97aa',
+        muted2: '#667287',
+        border: 'rgba(255, 255, 255, 0.085)',
+        borderHover: 'rgba(255, 255, 255, 0.17)',
 
-        // Severity-based neon accents
+        // Premium accent palette (SerQ reference)
+        orange: '#ff5b1f',
+        orange2: '#ff8a3d',
+        blue: '#2fa8ff',
+        green: '#25d07d',
+        red: '#ff4d4d',
+
+        // Severity-based neon accents — updated to SerQ palette
         severity: {
-          low: '#06b6d4',      // cyan-500
-          medium: '#eab308',   // amber-500
-          high: '#f97316',     // orange-500
-          critical: '#ef4444', // red-500
+          low: '#25d07d',      // green-400 (SerQ)
+          medium: '#2fa8ff',   // blue-400 (SerQ)
+          high: '#ff8a3d',     // orange-300 (SerQ)
+          critical: '#ff4d4d', // red-400 (SerQ)
         },
 
-        // Neon glows
+        // Neon glows — updated to SerQ palette
         glow: {
-          cyan: '0 0 15px #06b6d4, 0 0 30px #06b6d4',
-          amber: '0 0 15px #eab308, 0 0 30px #eab308',
-          orange: '0 0 15px #f97316, 0 0 30px #f97316',
-          red: '0 0 15px #ef4444, 0 0 30px #ef4444',
+          cyan: '0 0 15px #2fa8ff, 0 0 30px #2fa8ff',
+          amber: '0 0 15px #ff8a3d, 0 0 30px #ff8a3d',
+          orange: '0 0 15px #ff5b1f, 0 0 30px #ff5b1f',
+          red: '0 0 15px #ff4d4d, 0 0 30px #ff4d4d',
+          green: '0 0 15px #25d07d, 0 0 30px #25d07d',
+          blue: '0 0 15px #2fa8ff, 0 0 30px #2fa8ff',
         },
 
         // Legacy
