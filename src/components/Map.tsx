@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react'
+import { motion } from 'framer-motion'
+import { Search, Target } from 'lucide-react'
 import {
   MapContainer,
   TileLayer,
@@ -154,20 +156,24 @@ function Crosshair() {
 function MapControls({ onFitBounds, onReset }: { onFitBounds: () => void; onReset: () => void }) {
   return (
     <div className="absolute top-4 right-4 z-40 flex flex-col gap-2">
-      <button
+      <motion.button
+        whileHover={{ scale: 1.08 }}
+        whileTap={{ scale: 0.95 }}
         onClick={onFitBounds}
-        className="glass-dark border border-border text-slate-300 hover:text-cyan-400 hover:border-cyan-400/50 rounded-xl p-2.5 transition-all duration-200 transform hover:scale-105 shadow-glow-cyan"
+        className="glass-dark border border-border text-slate-300 hover:text-cyan-400 hover:border-cyan-400/50 rounded-xl p-2.5 transition-all duration-200 shadow-glow-cyan"
         title="Ajustar vista a todos los eventos"
       >
-        <span className="text-lg">🔍</span>
-      </button>
-      <button
+        <Search className="w-4 h-4" />
+      </motion.button>
+      <motion.button
+        whileHover={{ scale: 1.08 }}
+        whileTap={{ scale: 0.95 }}
         onClick={onReset}
-        className="glass-dark border border-border text-slate-300 hover:text-slate-100 hover:border-borderHover rounded-xl p-2.5 transition-all duration-200 transform hover:scale-105"
+        className="glass-dark border border-border text-slate-300 hover:text-slate-100 hover:border-borderHover rounded-xl p-2.5 transition-all duration-200"
         title="Restablecer vista"
       >
-        <span className="text-lg">🎯</span>
-      </button>
+        <Target className="w-4 h-4" />
+      </motion.button>
     </div>
   )
 }

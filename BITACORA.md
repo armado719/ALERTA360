@@ -14,6 +14,58 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 
 ## 🗓️ Historial de Cambios
 
+### **2026-10-16 — Fase 2 Features + UI Premium Implementadas**
+
+#### Cambios Realizados (Backend):
+- ✅ `backend/src/routes/auth.ts` (nuevo) — Rutas de autenticación: POST /auth/register, POST /auth/login, GET /auth/me. JWT + bcrypt + Zod validation
+- ✅ `backend/src/routes/events.ts` (nuevo) — GET /api/events (con filtros types/timeRange), GET /api/events/:id. Sirve eventos desde la base de datos
+- ✅ `backend/src/routes/locations.ts` (nuevo) — CRUD completo: GET /locations, POST /locations, DELETE /locations/:id. Auth JWT requerido
+- ✅ `backend/src/services/ingestion.ts` (nuevo) — Servicio de ingestión: USGS earthquakes (feed geojson all_day), NOAA flood warnings (API alerts/active). Scheduler cada 5 minutos. Deduplicación via externalId
+- ✅ `backend/src/index.ts` — Actualizado: registra 3 route modules (auth, events, locations), JWT plugin, servidor escucha en puerto 3000
+- ✅ `backend/.env` (nuevo) — DATABASE_URL con credentials de PostgreSQL local
+- ✅ `prisma db push` — Schema sincronizado a PostgreSQL. 6 tablas creadas (User, UserPreference, Location, DisasterEvent, Notification, AuditLog)
+- ✅ PostgreSQL corriendo en Docker (container `alerta360-db`, puerto 5432)
+- ✅ Verificado: ingestión funciona — eventos reales de USGS (terremotos) y NOAA (flood warnings) aparecen en /api/events
+
+#### Cambios Realizados (Frontend Premium):
+- ✅ `tailwind.config.js` — Tema dark premium: colores neon por severidad (severity.low/medium/high/critical), glassmorphism, animaciones (pulse, fade-in, stagger), background grid
+- ✅ `src/index.css` — Tema oscuro radial (surface → surfaceElev), utilidades `.glass` / `.glass-dark` / `.glass-light`, scrollbars personalizadas, overrides Leaflet dark theme, keyframes para animaciones
+- ✅ `src/App.tsx` — Rediseñado: auth state (login modal automático), layout glass-dark con gap, grid background, toast de error premium
+- ✅ `src/components/AuthModal.tsx` (nuevo) — Modal overlay con login/register, campos con glassmorphism, validación, auto-guardado de token JWT en localStorage
+- ✅ `src/components/Header.tsx` — Rediseñado: logo con gradiente neon (cyan→purple→cyan), reloj en vivo, botones de navegación glass-dark, menú de usuario con status
+- ✅ `src/components/Dashboard.tsx` — Rediseñado con:
+  - **Tarjeta de alerta crítica urgente** (top): card prominente con timer, icono de alerta, botón "Ver detalle"
+  - **Stat cards con sparklines**: SVGs mini-graficos de tendencia, progress bars, colores por severidad
+  - **Event cards premium**: severity progress bar, badge de tiempo transcurrido (monospace), pulse animation, glass-dark borders, hover lift
+  - **Live clock** en footer (actualiza cada 30s)
+  - **Staggered animations** en toda la lista
+- ✅ `src/components/Map.tsx` — Rediseñado con:
+  - **Tiles oscuros CARTO dark_all** (tema premium para centros de mando)
+  - **Marcadores animados**: neon glow por severidad, pulse animation en critical/high
+  - **Líneas de conexión**: polylines entre eventos del mismo tipo cercanos (5-500km)
+  - **Crosshair central**: reticle de apuntado en el centro del mapa
+  - **Controles personalizados**: zoom +, zoom -, fit-to-bounds, reset view
+  - **Popups glassmórficos**: dark theme, blur, información premium
+  - **Auto-fit bounds** al cargar eventos
+
+#### Cambios Realizados (API Client):
+- ✅ `src/services/api.ts` — Reescrito:
+  - JWT token persistence (localStorage + axios defaults)
+  - `register()`, `login()`, `logout()`, `getMe()` — auth completo
+  - `fetchDisasterEvents()`, `fetchEventById()` — sin mock data fallback
+  - `fetchLocations()`, `createLocation()`, `deleteLocation()` — CRUD locations
+  - `subscribeToAlerts()` — suscripción a notificaciones
+  - `setAuthToken()` — helper para auth header
+
+#### Estado:
+- ✅ Type-check: 0 errores (backend + frontend)
+- ✅ Build: 133 módulos transformados, 376 kB (116.84 kB gzipped)
+- ✅ Backend: corriendo en http://localhost:3000 (health check, events reales, auth JWT)
+- ✅ Frontend: corriendo en http://localhost:5173 (proxy Vite → backend)
+- ✅ Dev server: HTTP 200
+
+---
+
 ### **2026-10-16 — Fixes de tipo y configuración Vite**
 
 #### Cambios Realizados:
