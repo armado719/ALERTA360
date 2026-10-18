@@ -57,6 +57,7 @@ function createFakePrisma() {
   ]
 
   const preferences = new Map<string, Record<string, unknown>>()
+  const phones = new Map<string, string | null>()
 
   const matches = (row: FakeNotification, where: Record<string, any>) =>
     (where.userId === undefined || row.userId === where.userId) &&
@@ -83,6 +84,15 @@ function createFakePrisma() {
         const target = notifications.filter(row => matches(row, where))
         for (const row of target) notifications.splice(notifications.indexOf(row), 1)
         return { count: target.length }
+      },
+    },
+    user: {
+      findUnique: async ({ where }: { where: { id: string } }) => ({
+        phone: phones.get(where.id) ?? null,
+      }),
+      update: async ({ where, data }: { where: { id: string }; data: { phone?: string | null } }) => {
+        phones.set(where.id, data.phone ?? null)
+        return { id: where.id, phone: data.phone ?? null }
       },
     },
     userPreference: {
@@ -233,6 +243,29 @@ describe('API de notificaciones y preferencias', () => {
     expect(updated.json().minSeverity).toBe('high')
     expect(updated.json().smsEnabled).toBe(true)
     expect(updated.json().pushEnabled).toBe(true) // lo no enviado se conserva
+  })
+
+  it('guarda el teléfono para SMS y lo devuelve', async () => {
+    const saved = await app.inject({
+      method: 'PUT',
+      url: '/api/preferences',
+      headers: auth(),
+      payload: { smsEnabled: true, phone: '+573001234567' },
+    })
+    expect(saved.statusCode).toBe(200)
+    expect(saved.json().phone).toBe('+573001234567')
+    expect(saved.json().smsEnabled).toBe(true)
+
+    const read = await app.inject({ method: 'GET', url: '/api/preferences', headers: auth() })
+    expect(read.json().phone).toBe('+573001234567')
+
+    const invalid = await app.inject({
+      method: 'PUT',
+      url: '/api/preferences',
+      headers: auth(),
+      payload: { phone: '3001234567' }, // sin +57
+    })
+    expect(invalid.statusCode).toBe(400)
   })
 
   it('valida las preferencias', async () => {

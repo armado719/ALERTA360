@@ -10,6 +10,18 @@ const ConfigSchema = z.object({
   CORS_ORIGIN: z.string().default('http://localhost:5173,http://127.0.0.1:5173'),
   JWT_SECRET: z.string().min(1, 'JWT_SECRET is required'),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
+  // --- Entrega de notificaciones ---
+  // Sin API key, el canal queda en `skipped` (no rompe nada).
+  SENDGRID_API_KEY: z.string().default(''),
+  EMAIL_FROM: z.string().default('alertas@alerta360.com'),
+  SENDGRID_BASE_URL: z.string().default('https://api.sendgrid.com'),
+  TWILIO_ACCOUNT_SID: z.string().default(''),
+  TWILIO_AUTH_TOKEN: z.string().default(''),
+  TWILIO_FROM_NUMBER: z.string().default(''),
+  TWILIO_BASE_URL: z.string().default('https://api.twilio.com'),
+  // --- Documentación ---
+  DOCS_ENABLED: z.string().default('true'),
+
   USGS_ENABLED: z.string().default('true'),
   NOAA_ENABLED: z.string().default('true'),
   INGEST_INTERVAL: z.coerce.number().default(300000),

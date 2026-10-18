@@ -149,3 +149,11 @@ export const wsConnections = new Gauge({
   help: 'Conexiones WebSocket de alertas abiertas',
   registers: [registry],
 })
+
+/** Entregas por proveedor externo, por canal y resultado. */
+export const notificationsDelivered = new Counter({
+  name: 'alerta360_notifications_delivered_total',
+  help: 'Entregas a proveedores externos (email/SMS) por canal y resultado',
+  labelNames: ['channel', 'status'] as const,
+  registers: [registry],
+})

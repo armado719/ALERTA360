@@ -13,6 +13,7 @@ import {
   notificationsCreated,
 } from '../plugins/metrics'
 import type { AlertHub } from '../realtime/hub'
+import { dispatchEventNotifications } from './notifications/dispatch'
 
 /**
  * Motor de alertas: decide qué usuarios deben recibir un evento y crea las
@@ -254,6 +255,14 @@ export async function matchEvent(
       `[MATCHING] ${event.type} ${event.severity} → ${results.length} usuario(s), ` +
         `${count} notificación(es), ${pushedLive} en vivo`
     )
+
+    // Email y SMS salen fuera del ciclo de ingesta: si el proveedor tarda o
+    // falla, la ingesta no se bloquea.
+    if (count > 0) {
+      void dispatchEventNotifications(prisma, event.id).catch(err =>
+        logger.warn({ err, eventId: event.id }, '[MATCHING] Fallo al despachar email/SMS')
+      )
+    }
 
     return { matchedUsers: results.length, created: count, byChannel, pushedLive }
   } catch (err) {

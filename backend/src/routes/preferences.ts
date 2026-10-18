@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { requireAuth } from '../middleware/requireAuth'
+import { E164 } from '../services/notifications/sms'
 
 /**
  * Preferencias de alerta del usuario: radio, tipos, severidad mínima y canales.
@@ -25,6 +26,12 @@ const UpdateSchema = z
     pushEnabled: z.boolean(),
     emailEnabled: z.boolean(),
     smsEnabled: z.boolean(),
+    // El teléfono vive en User, pero se gestiona desde aquí: es donde el
+    // usuario decide si quiere SMS. Formato E.164 (+573001234567).
+    phone: z
+      .string()
+      .regex(E164, 'El teléfono debe tener formato E.164, por ejemplo +573001234567')
+      .nullable(),
   })
   .partial()
 
@@ -49,7 +56,11 @@ export async function registerPreferenceRoutes(fastify: FastifyInstance) {
         update: {},
         create: { userId, ...DEFAULTS },
       })
-      return reply.send(preferences)
+      const user = await fastify.prisma.user.findUnique({
+        where: { id: userId },
+        select: { phone: true },
+      })
+      return reply.send({ ...preferences, phone: user?.phone ?? null })
     }
   )
 
@@ -64,12 +75,23 @@ export async function registerPreferenceRoutes(fastify: FastifyInstance) {
       }
 
       const userId = (request as any).user.id as string
+      const { phone, ...preferencesData } = parsed.data
+
       const preferences = await fastify.prisma.userPreference.upsert({
         where: { userId },
-        update: parsed.data,
-        create: { userId, ...DEFAULTS, ...parsed.data },
+        update: preferencesData,
+        create: { userId, ...DEFAULTS, ...preferencesData },
       })
-      return reply.send(preferences)
+
+      if (phone !== undefined) {
+        await fastify.prisma.user.update({ where: { id: userId }, data: { phone } })
+      }
+
+      const user = await fastify.prisma.user.findUnique({
+        where: { id: userId },
+        select: { phone: true },
+      })
+      return reply.send({ ...preferences, phone: user?.phone ?? null })
     }
   )
 }

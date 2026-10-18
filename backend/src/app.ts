@@ -12,6 +12,7 @@ import { registerLocationRoutes } from './routes/locations'
 import { registerNotificationRoutes } from './routes/notifications'
 import { registerPreferenceRoutes } from './routes/preferences'
 import { registerRealtimeRoutes } from './realtime/ws'
+import { registerDocsRoutes } from './routes/docs'
 import { AlertHub } from './realtime/hub'
 import {
   getLastIngestionTimestamp,
@@ -143,6 +144,9 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
   // WebSocket de alertas en vivo
   await registerRealtimeRoutes(app)
+
+  // Documentación: /docs (Swagger UI) y /openapi.json
+  await registerDocsRoutes(app)
 
   app.addHook('onClose', async () => {
     hub.closeAll()

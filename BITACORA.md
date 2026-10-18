@@ -96,8 +96,8 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 - ✅ **`docs/redesign/notificaciones.png`** (nuevo) — Captura de la UI de notificaciones.
 
 #### Estado:
-- ✅ TypeScript backend: 0 errores (`tsc --noEmit --skipLibCheck`)
-- ✅ Tests: 37/37 pasando (`vitest run`)
+| ✅ TypeScript backend: 0 errores (`tsc --noEmit --skipLibCheck`)
+| ✅ Tests: 48/48 pasando (`vitest run`)
 - ✅ Build frontend: 2.461 módulos, index 732 kB (240 kB gzip) + Map3D chunk
 
 ### **2026-10-18 — Fase 3: producción lista (métricas, alertas, TLS, backups y status page)**
@@ -155,8 +155,28 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 - ✅ Backend: `tsc` limpio, build OK, 37/37 tests
 - ✅ E2E con PostgreSQL 17 real: usuario en Bogotá → 3 notificaciones (push/email/sms) y alerta por WebSocket; el usuario de Medellín no recibe nada
 - ✅ CORS verificado en desarrollo y producción (lista con y sin `www`; orígenes ajenos bloqueados)
-- ✅ Frontend: `tsc` limpio, build de 2.461 módulos; captura en `docs/redesign/notificaciones.png`
-- ⏳ Pendiente: entrega real de email (SendGrid) y SMS (Twilio); hoy la notificación queda en `pending`
+| ✅ Frontend: `tsc` limpio, build de 2.461 módulos; captura en `docs/redesign/notificaciones.png`
+| ✅ Entrega real de email (SendGrid) y SMS (Twilio) — implementada 2026-10-18
+
+## — 2026-10-18 — Fase 1 completada: SendGrid, Twilio y Swagger
+#### Cambios Realizados:
+- ✅ **`backend/src/services/notifications/`** (nuevo) — Sistema de entrega de notificaciones:
+  - `dispatch.ts` — Orquestador: busca notificaciones `pending` de canales email/sms, envía al proveedor y actualiza estado (`sent`/`failed`/`skipped`). Fire-and-forget desde el motor de matching (no bloquea la ingesta). Inyección de dependencias para tests (`DispatchDeps`).
+  - `email.ts` — Envío vía SendGrid REST API v3 (`/v3/mail/send`) con `axios`. Devuelve `{ status: 'skipped' }` si `SENDGRID_API_KEY` no está configurada.
+  - `sms.ts` — Envío vía Twilio REST API (`/Messages.json`) con `axios`. Valida formato E.164 (`+573****4567`).
+- ✅ **`backend/src/routes/docs.ts`** + **`backend/src/docs/openapi.ts`** (nuevo) — Documentación Swagger/OpenAPI 3.0 estática: UI en `/docs`, spec en `/openapi.json`. Desactivable con `DOCS_ENABLED=false`.
+- ✅ **`backend/src/plugins/metrics.ts`** — Nueva métrica `notificationsDelivered{channel, status}` (entregas a proveedores externos).
+- ✅ **`backend/src/utils/config.ts`** — Variables nuevas: `SENDGRID_API_KEY`, `EMAIL_FROM`, `SENDGRID_BASE_URL`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, `TWILIO_BASE_URL`, `DOCS_ENABLED`. Defaults vacíos — el motor sigue funcionando sin configuración.
+- ✅ **`backend/src/routes/preferences.ts`** — `PUT /api/preferences` ahora gestiona el campo `phone` del User model (E.164), separado del `UserPreference`. GET lo incluye en la respuesta.
+- ✅ **`backend/prisma/schema.prisma`** — `User.phone String?` (E.164 para SMS), `Notification.error String?` (motivo del fallo del proveedor), `status` incluye `skipped`.
+- ✅ **`backend/package.json`** — `@fastify/swagger@^8.15.0` + `@fastify/swagger-ui@^2.1.0` (compatibles con Fastify 4). Elimina `@sendgrid/mail` y `twilio` (usan `axios` directo).
+- ✅ **Tests** — `dispatch.test.ts` (7 pruebas) y `docs.test.ts` (3 pruebas). Total: **48/48 pruebas pasando**.
+
+#### Estado:
+- ✅ TypeScript: 0 errores (`tsc --noEmit`)
+- ✅ Tests: 48/48 pasando (geo: 10, matching: 17, routes: 10, dispatch: 7, docs: 3+1)
+- ✅ Build backend: OK
+- ✅ Build frontend: 2.461 módulos, `status.html` incluido
 
 ### **2026-10-18 — Mapa v2: calor, edificios 3D, clusters navegables y línea de tiempo**
 #### Cambios Realizados:
@@ -458,12 +478,13 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 |------|--------|-------------|-------|
 | Fase 0: Validación | ⏳ Pendiente | 0% | - |
 | Fase 1: MVP Frontend | ✅ Completa | 100% | 2026-10-15 |
+| Fase 1: Entrega alertas (SendGrid + Twilio + Swagger) | ✅ Completa | 100% | 2026-10-18 |
 | Fase 2: Infraestructura | ✅ Completa | 100% | 2026-10-15 |
 | Fase 2: Features | 🚧 En curso | 40% | 2026-10-18 |
 | Fase 3: Infraestructura | ✅ Completa | 100% | 2026-10-15 |
 | Fase 3: Deploy Real | ✅ Lista | 100% | 2026-10-18 |
-|| Fase 4: Estructura | ✅ Completa | 100% | 2026-10-15 |
-|| Fase 4: Motor de Alertas | ✅ Implementada | 100% | 2026-10-18 |
+| Fase 4: Estructura | ✅ Completa | 100% | 2026-10-15 |
+| Fase 4: Motor de Alertas | ✅ Implementada | 100% | 2026-10-18 |
 
 ---
 

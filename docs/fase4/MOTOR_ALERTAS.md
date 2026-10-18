@@ -54,8 +54,10 @@ Todas las rutas requieren `Authorization: Bearer <jwt>`.
 | `POST` | `/api/notifications/read-all` | Marca todas |
 | `DELETE` | `/api/notifications/:id` | Borra una propia |
 | `GET` | `/api/preferences` | Preferencias (crea las de defecto) |
-| `PUT` | `/api/preferences` | Actualización parcial |
+| `PUT` | `/api/preferences` | Actualización parcial (incluye `phone` en E.164 para SMS) |
 | `WS` | `/ws/alerts?token=<jwt>` | Alertas en vivo |
+| `GET` | `/docs` | Swagger UI |
+| `GET` | `/openapi.json` | Especificación OpenAPI 3.0 |
 
 Respuesta de `/api/notifications`:
 
@@ -97,7 +99,30 @@ agrupa por evento (un evento puede tener push + email + sms).
 | `alerta360_notifications_created_total{channel}` | counter | Volumen por canal |
 | `alerta360_ws_connections` | gauge | Sesiones en vivo |
 
-## 6. Cómo probarlo
+## 6. Entrega por email y SMS
+
+El matching deja las notificaciones en `pending`; un despachador
+(`services/notifications/dispatch.ts`) las envía al proveedor y actualiza el
+estado a `sent`, `failed` o `skipped`.
+
+| Canal | Proveedor | Variables |
+|---|---|---|
+| email | SendGrid API v3 | `SENDGRID_API_KEY`, `EMAIL_FROM` |
+| sms | Twilio Messages | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` |
+
+- **Sin claves no se rompe nada**: la notificación queda en `skipped` y el
+  motivo se guarda en `Notification.error`.
+- El teléfono vive en `User.phone` y se edita desde `PUT /api/preferences`
+  (formato E.164, `+573001234567`).
+- El envío corre **fuera del ciclo de ingesta**: un proveedor lento no bloquea
+  la detección del evento.
+- Se envía una sola vez por notificación: el despachador solo toma filas en
+  `pending`, así que reintentar el matching no reenvía nada.
+- Métrica: `alerta360_notifications_delivered_total{channel,status}`.
+- SendGrid y Twilio aceptan `*_BASE_URL`, lo que permite apuntar a un mock en
+  tests o a un proxy corporativo.
+
+## 7. Cómo probarlo
 
 ```bash
 # Unitarios y de rutas (sin base de datos: Prisma falso)
@@ -109,7 +134,7 @@ DATABASE_URL=postgresql://… JWT_SECRET=… npm run dev
 #  → insertar un evento cerca y comprobar GET /api/notifications
 ```
 
-## 7. CORS y proxy
+## 8. CORS y proxy
 
 El frontend llama a `/api` y `/ws` **en el mismo origen**:
 
@@ -134,12 +159,12 @@ Errores típicos:
 | CORS solo falla en el segundo dominio | Falta `www` en la lista | Añadir ambos |
 | Preflight 404 | Origen rechazado | Revisar el log `[CORS] Origen no permitido` |
 
-## 8. Limitaciones conocidas
+## 9. Limitaciones conocidas
 
 - **Una sola instancia.** El hub de WebSockets vive en memoria; con varias
   réplicas haría falta Redis pub/sub.
-- **Email y SMS** crean la notificación con estado `pending`: no hay proveedor
-  conectado todavía (SendGrid / Twilio).
+- **Email y SMS** están implementados, pero necesitan las claves del proveedor;
+  sin ellas quedan en `skipped` (visible en la bandeja y en la métrica).
 - **Sin backfill:** un usuario nuevo no recibe alertas de eventos anteriores.
 - El matching recorre todas las preferencias; con decenas de miles de usuarios
   habrá que particionar por caja geográfica o pasar a PostGIS.
