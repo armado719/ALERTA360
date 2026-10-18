@@ -116,9 +116,19 @@ body {
   user-select: none;
 }
 
-/* Tinte azulado de los tiles para integrarlos con la UI */
-.leaflet-tile-pane {
+/* Tinte por estilo de mapa (los tiles crudos no combinan con la UI) */
+[data-basemap="dark"] .leaflet-tile-pane {
   filter: brightness(0.66) saturate(0.5) hue-rotate(178deg) contrast(1.08);
+}
+[data-basemap="sat"] .leaflet-tile-pane {
+  filter: brightness(0.92) saturate(1.05) contrast(1.02);
+}
+/* Los mapas claros (topo/relieve) se invierten para volverlos "dark mode" */
+[data-basemap="topo"] .leaflet-tile-pane {
+  filter: invert(0.9) hue-rotate(185deg) brightness(0.92) saturate(0.55) contrast(1.02);
+}
+[data-basemap="relief"] .leaflet-tile-pane {
+  filter: invert(0.88) hue-rotate(188deg) brightness(0.9) saturate(0.45) contrast(1.05);
 }
 
 .leaflet-popup-content-wrapper {
@@ -268,24 +278,47 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Marcadores HUD para Map3D (MapLibre GL) */
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .a360-halo, .a360-ring, .marker-pulse, .stagger > * { animation: none !important; }
+}
+
+
+/* ---------- MapLibre (vista 3D) ---------- */
+.maplibregl-map {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: #0b131d;
+}
+
+.maplibregl-canvas {
+  outline: none;
+}
+
+/* Ocultamos controles y atribución por defecto: usamos los propios */
+.maplibregl-ctrl-attrib,
+.maplibregl-ctrl-bottom-left,
+.maplibregl-ctrl-bottom-right,
+.maplibregl-ctrl-top-right,
+.maplibregl-ctrl-top-left {
+  display: none !important;
+}
+
+/* Marcadores HUD sobre la vista 3D */
 .a360-gl-marker {
   position: relative;
   display: grid;
   place-items: center;
-  width: 100%;
-  height: 100%;
   cursor: pointer;
 }
 
 .a360-gl-halo {
   position: absolute;
-  inset: -50%;
+  inset: -60%;
   border-radius: 999px;
   background: radial-gradient(closest-side, var(--c) 0%, transparent 70%);
-  opacity: 0.4;
-  filter: blur(2px);
-  animation: a360Breathe 3s ease-in-out infinite;
+  opacity: 0.45;
+  animation: a360Breathe 3.2s ease-in-out infinite;
+  pointer-events: none;
 }
 
 .a360-gl-dot {
@@ -294,15 +327,60 @@ body {
   height: 100%;
   border-radius: 999px;
   background: var(--c);
-  box-shadow:
-    0 0 6px var(--c),
-    0 0 12px var(--c),
-    0 0 20px rgba(56, 189, 248, 0.4);
   border: 1.5px solid rgba(255, 255, 255, 0.85);
+  box-shadow:
+    0 0 8px var(--c),
+    0 0 18px var(--c),
+    0 0 30px rgba(56, 189, 248, 0.4);
 }
 
-/* Reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  .a360-halo, .a360-ring, .marker-pulse, .stagger > *,
-  .a360-gl-halo, .a360-gl-dot { animation: none !important; }
+/* Fondo tipo espacio para la vista 3D (detrás del globo) */
+.a360-space {
+  background-color: #05080e;
+  background-image:
+    radial-gradient(1px 1px at 12% 18%, rgba(255,255,255,.55), transparent 60%),
+    radial-gradient(1px 1px at 28% 42%, rgba(255,255,255,.35), transparent 60%),
+    radial-gradient(1.4px 1.4px at 41% 12%, rgba(190,225,255,.55), transparent 60%),
+    radial-gradient(1px 1px at 57% 30%, rgba(255,255,255,.30), transparent 60%),
+    radial-gradient(1.2px 1.2px at 68% 8%,  rgba(255,255,255,.45), transparent 60%),
+    radial-gradient(1px 1px at 79% 24%, rgba(190,225,255,.40), transparent 60%),
+    radial-gradient(1.3px 1.3px at 88% 14%, rgba(255,255,255,.50), transparent 60%),
+    radial-gradient(1px 1px at 94% 36%, rgba(255,255,255,.30), transparent 60%),
+    radial-gradient(900px 520px at 50% 0%, rgba(30,80,140,.28), transparent 70%);
+}
+
+/* ---------- Burbujas de agrupación (2D) ---------- */
+.a360-bubble {
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #04222b;
+  background:
+    radial-gradient(circle at 35% 30%, rgba(255,255,255,.95), var(--c) 62%);
+  border: 1.5px solid rgba(255,255,255,.85);
+  box-shadow:
+    0 0 12px var(--c),
+    0 0 26px color-mix(in srgb, var(--c) 55%, transparent);
+  transition: transform .15s ease;
+}
+
+.a360-bubble:hover {
+  transform: scale(1.08);
+}
+
+.a360-bubble span {
+  transform: translateY(.5px);
+  letter-spacing: -0.02em;
+}
+
+/* ---------- Atribuciones por encima de la línea de tiempo ---------- */
+[data-timeline='true'] .leaflet-bottom.leaflet-left,
+[data-timeline='true'] .leaflet-bottom.leaflet-right,
+[data-timeline='true'] .maplibregl-ctrl-bottom-left,
+[data-timeline='true'] .maplibregl-ctrl-bottom-right,
+[data-timeline='true'] .a360-attrib {
+  bottom: 92px !important;
+  transition: bottom .3s ease;
 }

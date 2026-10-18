@@ -57,7 +57,25 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 #### Estado:
 - ✅ Type-check: 0 errores (tsc --noEmit --skipLibCheck)
 
----
+### **2026-10-17 — Alerta360 UI Redesign v2 + Map3D Integration**
+#### Cambios Realizados:
+- ✅ **`alerta360-ui-redesign (1)/`** — Paquete v2 aplicado: layer panel, heat map, edificios 3D, timeline 24h, 4 basemaps, clustering
+- ✅ **`src/components/Map.tsx`** — REescrito con: `BASEMAPS` (dark/sat/topo/relief), `ClusterLayer` (agrupación 56px + merge 40px), `HeatLayer` (leaflet.heat), `EventConnections` (líneas entre eventos < 400 pares), `TimelineSlider` (24h, play/pause, scrub), `LayerPanel` (Layers button → dropdown con toggles), `Toggle` component. Cada capa tiene CSS filter (`data-basemap` attribute).
+- ✅ **`src/components/Map3D.tsx`** — Actualizado: interop `maplibreglNS.default ?? maplibreglNS`, OSM vector tiles (OpenFreeMap) para edificios 3D (`fill-extrusion` con altura real), GeoJSON cluster source, heatmap nativo MapLibre, labels `place` layer, click-to-expand clusters (`getClusterExpansionZoom`), `ResizeObserver` para resize.
+- ✅ **`src/App.tsx`** — State `timeline` (TimelineState: enabled/hoursAgo/playing), lógica de reproducción (15-min steps cada 110ms), filtrado de eventos por ventana temporal `[now-24h, now-hoursAgo]`.
+- ✅ **`src/index.css`** — `.a360-gl-*` marcadores HUD 3D, `.a360-bubble` clusters, `.a360-space` fondo estrellas para 3D, `data-basemap` CSS filters (dark/sat/topo/relief), `data-timeline` attribution offset.
+- ✅ **`src/types/leaflet-heat.d.ts`** — `declare module 'leaflet.heat'`
+- ✅ **`package.json`** — `maplibre-gl: ^4.7.1` (downgrade de ^6.14.0 que no arrancaba el worker en Vite), `leaflet.heat: ^0.2.0` (nueva)
+
+#### Estado:
+- ✅ Type-check: 0 errores (tsc --noEmit --skipLibCheck)
+- ✅ Build: 2461 módulos transformados, Map3D code-split (lazy chunk separado)
+- ✅ Dev server: HTTP 200 en :5173
+- ✅ 6 URLs ESRI de tiles verificadas HTTP 200 (dark/dark-ref/sat/sat-ref/topo/relief)
+- ✅ AWS Terrain Tiles verificadas HTTP 200 (76.5KB PNG)
+- ✅ OpenFreeMap vector tiles para edificios 3D
+- ✅ Push a rama `ui/redesign-v2` (commit ac05350)
+
 
 #### Cambios Realizados (Frontend):
 - ✅ `src/components/Sparkline.tsx` (nuevo) — Componentes Chart.js: `Sparkline` (línea con gradiente semi-transparente, tension 0.4) y `DonutChart` (donut con cortina 65%, tooltips dark theme). Registra LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, ArcElement

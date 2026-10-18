@@ -7,6 +7,7 @@ import Header from './components/Header'
 import AuthModal from './components/AuthModal'
 import EventDetailCard from './components/EventDetailCard'
 import { DisasterEvent } from './types'
+import type { TimelineState } from './components/Map'
 import { fetchDisasterEvents, getMe, setAuthToken, AuthUser } from './services/api'
 import { DEMO_EVENTS } from './data/demoEvents'
 
@@ -19,6 +20,11 @@ function App() {
   const [filters, setFilters] = useState({
     types: ['earthquake', 'storm', 'flood', 'rain', 'landslide', 'volcanic'] as string[],
     timeRange: '24h' as '1h' | '24h' | '7d',
+  })
+  const [timeline, setTimeline] = useState<TimelineState>({
+    enabled: false,
+    hoursAgo: 0,
+    playing: false,
   })
   const [user, setUser] = useState<AuthUser | null>(null)
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
@@ -77,15 +83,39 @@ function App() {
     return () => clearTimeout(t)
   }, [error])
 
+  /* ---------- Reproducción de la línea de tiempo ---------- */
+  useEffect(() => {
+    if (!timeline.playing) return
+    const id = setInterval(() => {
+      setTimeline((t) => {
+        const next = +(t.hoursAgo - 0.25).toFixed(2)
+        if (next <= 0) return { ...t, hoursAgo: 0, playing: false }
+        return { ...t, hoursAgo: next }
+      })
+    }, 110)
+    return () => clearInterval(id)
+  }, [timeline.playing])
+
   /* ---------- Filtrado local (también en modo demo) ---------- */
   const visibleEvents = useMemo(() => {
-    if (!demo) return events
+    const byType = events.filter((e) => filters.types.includes(e.type))
     const now = Date.now()
-    const windowMs = filters.timeRange === '1h' ? 3_600_000 : filters.timeRange === '24h' ? 86_400_000 : 604_800_000
-    return events.filter(
-      (e) => filters.types.includes(e.type) && now - new Date(e.detectedAt).getTime() <= windowMs
-    )
-  }, [events, demo, filters])
+
+    // Con la línea de tiempo activa: ventana [ahora-24h, ahora-hoursAgo]
+    if (timeline.enabled) {
+      const start = now - 24 * 3_600_000
+      const cutoff = now - timeline.hoursAgo * 3_600_000
+      return byType.filter((e) => {
+        const t = new Date(e.detectedAt).getTime()
+        return t >= start && t <= cutoff
+      })
+    }
+
+    if (!demo) return byType
+    const windowMs =
+      filters.timeRange === '1h' ? 3_600_000 : filters.timeRange === '24h' ? 86_400_000 : 604_800_000
+    return byType.filter((e) => now - new Date(e.detectedAt).getTime() <= windowMs)
+  }, [events, demo, filters, timeline.enabled, timeline.hoursAgo])
 
   return (
     <div className="relative flex flex-col min-h-screen lg:h-screen bg-[#0b131d] text-slate-200 antialiased lg:overflow-hidden">
@@ -123,6 +153,8 @@ function App() {
               selectedEvent={selectedEvent}
               onSelectEvent={setSelectedEvent}
               loading={loading}
+              timeline={timeline}
+              onTimelineChange={(next) => setTimeline((t) => ({ ...t, ...next }))}
             />
             <EventDetailCard event={selectedEvent} onClose={() => setSelectedEvent(null)} />
 

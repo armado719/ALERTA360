@@ -1,6 +1,6 @@
 # ALERTA360 — Plataforma Global de Alertas Tempranas para Desastres Naturales
 
-**Versión:** 1.1 (actualizada)  
+
 **Fecha:** 2026-10-15  
 **Estado:** Implementación en progreso — Fase 1-3 infraestructura completada  
 **Propósito:** Documento de control de fases. Gobierna el avance del proyecto.
