@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { WifiOff, X } from 'lucide-react'
 import Map from './components/Map'
-import Map3D from './components/Map3D'
 import Dashboard from './components/Dashboard'
 import Header from './components/Header'
 import AuthModal from './components/AuthModal'
 import EventDetailCard from './components/EventDetailCard'
 import { DisasterEvent } from './types'
+import type { TimelineState } from './components/Map'
 import { fetchDisasterEvents, getMe, setAuthToken, AuthUser } from './services/api'
 import { DEMO_EVENTS } from './data/demoEvents'
 
@@ -21,11 +21,15 @@ function App() {
     types: ['earthquake', 'storm', 'flood', 'rain', 'landslide', 'volcanic'] as string[],
     timeRange: '24h' as '1h' | '24h' | '7d',
   })
+  const [timeline, setTimeline] = useState<TimelineState>({
+    enabled: false,
+    hoursAgo: 0,
+    playing: false,
+  })
   const [user, setUser] = useState<AuthUser | null>(null)
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [showErrorToast, setShowErrorToast] = useState(true)
-  const [mapMode, setMapMode] = useState<'2d' | '3d'>('2d')
 
   /* ---------- Auth ---------- */
   useEffect(() => {
@@ -79,15 +83,39 @@ function App() {
     return () => clearTimeout(t)
   }, [error])
 
+  /* ---------- Reproducción de la línea de tiempo ---------- */
+  useEffect(() => {
+    if (!timeline.playing) return
+    const id = setInterval(() => {
+      setTimeline((t) => {
+        const next = +(t.hoursAgo - 0.25).toFixed(2)
+        if (next <= 0) return { ...t, hoursAgo: 0, playing: false }
+        return { ...t, hoursAgo: next }
+      })
+    }, 110)
+    return () => clearInterval(id)
+  }, [timeline.playing])
+
   /* ---------- Filtrado local (también en modo demo) ---------- */
   const visibleEvents = useMemo(() => {
-    if (!demo) return events
+    const byType = events.filter((e) => filters.types.includes(e.type))
     const now = Date.now()
-    const windowMs = filters.timeRange === '1h' ? 3_600_000 : filters.timeRange === '24h' ? 86_400_000 : 604_800_000
-    return events.filter(
-      (e) => filters.types.includes(e.type) && now - new Date(e.detectedAt).getTime() <= windowMs
-    )
-  }, [events, demo, filters])
+
+    // Con la línea de tiempo activa: ventana [ahora-24h, ahora-hoursAgo]
+    if (timeline.enabled) {
+      const start = now - 24 * 3_600_000
+      const cutoff = now - timeline.hoursAgo * 3_600_000
+      return byType.filter((e) => {
+        const t = new Date(e.detectedAt).getTime()
+        return t >= start && t <= cutoff
+      })
+    }
+
+    if (!demo) return byType
+    const windowMs =
+      filters.timeRange === '1h' ? 3_600_000 : filters.timeRange === '24h' ? 86_400_000 : 604_800_000
+    return byType.filter((e) => now - new Date(e.detectedAt).getTime() <= windowMs)
+  }, [events, demo, filters, timeline.enabled, timeline.hoursAgo])
 
   return (
     <div className="relative flex flex-col min-h-screen lg:h-screen bg-[#0b131d] text-slate-200 antialiased lg:overflow-hidden">
@@ -120,44 +148,15 @@ function App() {
         {/* ---------- Mapa ---------- */}
         <section className="relative h-[46vh] min-h-[300px] lg:h-auto lg:flex-1 lg:min-h-0">
           <div className="panel w-full h-full overflow-hidden">
-            {mapMode === '2d' ? (
-              <Map
-                events={visibleEvents}
-                selectedEvent={selectedEvent}
-                onSelectEvent={setSelectedEvent}
-                loading={loading}
-              />
-            ) : (
-              <Map3D
-                events={visibleEvents}
-                selectedEvent={selectedEvent}
-                onSelectEvent={setSelectedEvent}
-              />
-            )}
+            <Map
+              events={visibleEvents}
+              selectedEvent={selectedEvent}
+              onSelectEvent={setSelectedEvent}
+              loading={loading}
+              timeline={timeline}
+              onTimelineChange={(next) => setTimeline((t) => ({ ...t, ...next }))}
+            />
             <EventDetailCard event={selectedEvent} onClose={() => setSelectedEvent(null)} />
-            {/* Toggle 2D/3D */}
-            <div className="absolute top-2.5 right-2.5 z-10 flex gap-1 p-1 bg-surfaceElev/80 border border-border rounded-lg backdrop-blur-md">
-              <button
-                onClick={() => setMapMode('2d')}
-                className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${
-                  mapMode === '2d'
-                    ? 'bg-[#38bdf8]/15 text-[#38bdf8] border border-[#38bdf8]/30'
-                    : 'text-slate-400 hover:text-slate-300'
-                }`}
-              >
-                2D
-              </button>
-              <button
-                onClick={() => setMapMode('3d')}
-                className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${
-                  mapMode === '3d'
-                    ? 'bg-[#38bdf8]/15 text-[#38bdf8] border border-[#38bdf8]/30'
-                    : 'text-slate-400 hover:text-slate-300'
-                }`}
-              >
-                3D
-              </button>
-            </div>
 
             {/* Aviso de backend (se oculta solo a los 9 s) */}
             <AnimatePresence>

@@ -1,0 +1,386 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+  scroll-behavior: smooth;
+}
+
+html, body, #root {
+  height: 100%;
+  min-height: 100%;
+}
+
+:root {
+  color-scheme: dark;
+  --page-bg: #0b131d;
+}
+
+/* Fondo del lienzo.
+   Ojo: NO usar variables sin definir (p. ej. var(--mouse-x)) en el
+   background del body — si no existen, el gradiente se invalida y el
+   navegador pinta la página en blanco. */
+html {
+  background-color: var(--page-bg);
+}
+
+body, #root {
+  background-color: var(--page-bg);
+  background-image:
+    radial-gradient(1200px 700px at 15% -10%, rgba(34, 211, 238, 0.06), transparent 60%),
+    radial-gradient(1000px 700px at 100% 0%, rgba(139, 92, 246, 0.05), transparent 55%);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: #e8eef7;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Caja de gráficas: alto fijo para que un canvas desproporcionado
+   no empuje el resto del panel fuera de la vista. */
+.chart-box {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+}
+.chart-box > canvas {
+  max-height: 100% !important;
+}
+
+/* ---------- Scrollbar ---------- */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(94, 234, 255, 0.18);
+  border-radius: 10px;
+  transition: background 0.2s;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(94, 234, 255, 0.38); }
+
+/* ---------- Glass / panels ---------- */
+.glass {
+  background: rgba(22, 33, 46, 0.6);
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.glass-dark {
+  background: rgba(15, 24, 35, 0.72);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.glass-light {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px) saturate(160%);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+/* Panel grande con borde superior iluminado, como en el mockup */
+.panel {
+  position: relative;
+  background: linear-gradient(180deg, rgba(26, 38, 53, 0.92), rgba(19, 29, 41, 0.96));
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: 16px;
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.04) inset,
+    0 24px 60px -20px rgba(0, 0, 0, 0.75);
+}
+
+.card {
+  background: linear-gradient(180deg, rgba(30, 44, 61, 0.85), rgba(24, 36, 50, 0.9));
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 14px;
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  border-color: rgba(56, 189, 248, 0.28);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.06), 0 10px 30px -12px rgba(0, 0, 0, 0.6);
+}
+
+/* ---------- Leaflet: tema oscuro ---------- */
+.leaflet-container {
+  background: #0e1824;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Tinte por estilo de mapa (los tiles crudos no combinan con la UI) */
+[data-basemap="dark"] .leaflet-tile-pane {
+  filter: brightness(0.66) saturate(0.5) hue-rotate(178deg) contrast(1.08);
+}
+[data-basemap="sat"] .leaflet-tile-pane {
+  filter: brightness(0.92) saturate(1.05) contrast(1.02);
+}
+/* Los mapas claros (topo/relieve) se invierten para volverlos "dark mode" */
+[data-basemap="topo"] .leaflet-tile-pane {
+  filter: invert(0.9) hue-rotate(185deg) brightness(0.92) saturate(0.55) contrast(1.02);
+}
+[data-basemap="relief"] .leaflet-tile-pane {
+  filter: invert(0.88) hue-rotate(188deg) brightness(0.9) saturate(0.45) contrast(1.05);
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 14px;
+  padding: 0;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+  background: rgba(16, 26, 38, 0.94);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(56, 189, 248, 0.18);
+}
+
+.leaflet-popup-tip {
+  background: rgba(16, 26, 38, 0.94);
+  border: 1px solid rgba(56, 189, 248, 0.18);
+}
+
+.leaflet-popup-content { padding: 14px; color: #e2e8f0; margin: 0; }
+.leaflet-popup-close-button { color: #94a3b8; opacity: 0.7; padding: 8px 8px 0 0 !important; }
+.leaflet-popup-close-button:hover { opacity: 1; color: #fff; }
+.leaflet-container a.leaflet-popup-close-button { top: 2px; right: 2px; }
+
+.leaflet-control-container { display: none; } /* usamos controles propios */
+
+/* ---------- Marcadores ALERTA360 ---------- */
+.a360-wrap {
+  background: transparent !important;
+  border: none !important;
+}
+
+.a360-marker {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.a360-halo {
+  position: absolute;
+  inset: -40%;
+  border-radius: 999px;
+  background: radial-gradient(closest-side, var(--c) 0%, transparent 72%);
+  opacity: 0.35;
+  filter: blur(1px);
+  animation: a360Breathe 3.2s ease-in-out infinite;
+}
+
+.a360-marker.is-static .a360-halo {
+  animation: none;
+  opacity: 0.28;
+}
+
+.a360-ring {
+  position: absolute;
+  width: 74%;
+  height: 74%;
+  border-radius: 999px;
+  border: 1.6px solid var(--c);
+  opacity: 0.55;
+  animation: a360Ring 2.8s ease-out infinite;
+}
+
+.a360-ring:nth-of-type(3) {
+  animation-delay: 1.4s;
+}
+
+.a360-dot {
+  position: relative;
+  width: 42%;
+  height: 42%;
+  min-width: 5px;
+  min-height: 5px;
+  border-radius: 999px;
+  background: var(--c);
+  box-shadow:
+    0 0 6px var(--c),
+    0 0 14px var(--c),
+    0 0 26px rgba(56, 189, 248, 0.35);
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+}
+
+.a360-marker.is-selected .a360-dot {
+  width: 60%;
+  height: 60%;
+  border-width: 2px;
+  box-shadow:
+    0 0 10px #fff,
+    0 0 22px var(--c),
+    0 0 40px var(--c);
+}
+
+@keyframes a360Breathe {
+  0%, 100% { opacity: 0.35; transform: scale(0.92); }
+  50% { opacity: 0.7; transform: scale(1.06); }
+}
+
+@keyframes a360Ring {
+  0% { transform: scale(0.55); opacity: 0.7; }
+  70% { opacity: 0; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+
+.a360-cluster {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #062630;
+  background: radial-gradient(circle at 35% 30%, #a5f3fc, #22d3ee 70%);
+  box-shadow: 0 0 14px rgba(34, 211, 238, 0.75), 0 0 30px rgba(34, 211, 238, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+}
+
+/* ---------- Animaciones auxiliares ---------- */
+.marker-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.1); }
+}
+
+.route-anim { animation: slideInRight 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.stagger > * {
+  opacity: 0;
+  animation: fadeInUp 0.4s ease-out forwards;
+}
+.stagger > *:nth-child(1) { animation-delay: 0.05s; }
+.stagger > *:nth-child(2) { animation-delay: 0.1s; }
+.stagger > *:nth-child(3) { animation-delay: 0.15s; }
+.stagger > *:nth-child(4) { animation-delay: 0.2s; }
+.stagger > *:nth-child(5) { animation-delay: 0.25s; }
+.stagger > *:nth-child(6) { animation-delay: 0.3s; }
+.stagger > *:nth-child(7) { animation-delay: 0.35s; }
+.stagger > *:nth-child(8) { animation-delay: 0.4s; }
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .a360-halo, .a360-ring, .marker-pulse, .stagger > * { animation: none !important; }
+}
+
+
+/* ---------- MapLibre (vista 3D) ---------- */
+.maplibregl-map {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: #0b131d;
+}
+
+.maplibregl-canvas {
+  outline: none;
+}
+
+/* Ocultamos controles y atribución por defecto: usamos los propios */
+.maplibregl-ctrl-attrib,
+.maplibregl-ctrl-bottom-left,
+.maplibregl-ctrl-bottom-right,
+.maplibregl-ctrl-top-right,
+.maplibregl-ctrl-top-left {
+  display: none !important;
+}
+
+/* Marcadores HUD sobre la vista 3D */
+.a360-gl-marker {
+  position: relative;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.a360-gl-halo {
+  position: absolute;
+  inset: -60%;
+  border-radius: 999px;
+  background: radial-gradient(closest-side, var(--c) 0%, transparent 70%);
+  opacity: 0.45;
+  animation: a360Breathe 3.2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.a360-gl-dot {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--c);
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  box-shadow:
+    0 0 8px var(--c),
+    0 0 18px var(--c),
+    0 0 30px rgba(56, 189, 248, 0.4);
+}
+
+/* Fondo tipo espacio para la vista 3D (detrás del globo) */
+.a360-space {
+  background-color: #05080e;
+  background-image:
+    radial-gradient(1px 1px at 12% 18%, rgba(255,255,255,.55), transparent 60%),
+    radial-gradient(1px 1px at 28% 42%, rgba(255,255,255,.35), transparent 60%),
+    radial-gradient(1.4px 1.4px at 41% 12%, rgba(190,225,255,.55), transparent 60%),
+    radial-gradient(1px 1px at 57% 30%, rgba(255,255,255,.30), transparent 60%),
+    radial-gradient(1.2px 1.2px at 68% 8%,  rgba(255,255,255,.45), transparent 60%),
+    radial-gradient(1px 1px at 79% 24%, rgba(190,225,255,.40), transparent 60%),
+    radial-gradient(1.3px 1.3px at 88% 14%, rgba(255,255,255,.50), transparent 60%),
+    radial-gradient(1px 1px at 94% 36%, rgba(255,255,255,.30), transparent 60%),
+    radial-gradient(900px 520px at 50% 0%, rgba(30,80,140,.28), transparent 70%);
+}
+
+/* ---------- Burbujas de agrupación (2D) ---------- */
+.a360-bubble {
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #04222b;
+  background:
+    radial-gradient(circle at 35% 30%, rgba(255,255,255,.95), var(--c) 62%);
+  border: 1.5px solid rgba(255,255,255,.85);
+  box-shadow:
+    0 0 12px var(--c),
+    0 0 26px color-mix(in srgb, var(--c) 55%, transparent);
+  transition: transform .15s ease;
+}
+
+.a360-bubble:hover {
+  transform: scale(1.08);
+}
+
+.a360-bubble span {
+  transform: translateY(.5px);
+  letter-spacing: -0.02em;
+}
+
+/* ---------- Atribuciones por encima de la línea de tiempo ---------- */
+[data-timeline='true'] .leaflet-bottom.leaflet-left,
+[data-timeline='true'] .leaflet-bottom.leaflet-right,
+[data-timeline='true'] .maplibregl-ctrl-bottom-left,
+[data-timeline='true'] .maplibregl-ctrl-bottom-right,
+[data-timeline='true'] .a360-attrib {
+  bottom: 92px !important;
+  transition: bottom .3s ease;
+}

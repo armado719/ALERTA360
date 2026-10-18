@@ -82,7 +82,8 @@ export function buildDemoEvents(total = 178): DisasterEvent[] {
 
       const lat = cluster.lat + (r() - 0.5) * cluster.spread * 2
       const lng = cluster.lng + (r() - 0.5) * cluster.spread * 2 * 1.6
-      const minutesAgo = Math.round(r() * 60 * 23) + 3
+      // repartidos en las últimas 24 h para que la línea de tiempo muestre actividad
+      const minutesAgo = Math.round(r() * 60 * 23.5) + 5
       const detected = new Date(now - minutesAgo * 60_000)
 
       events.push({

@@ -1,0 +1,1843 @@
+diff --git a/docs/redesign/MAPA.md b/docs/redesign/MAPA.md
+new file mode 100644
+index 0000000..1215683
+--- /dev/null
++++ b/docs/redesign/MAPA.md
+@@ -0,0 +1,93 @@
++# Mapa: capas, satélite y vista 3D
++
++## Panel de capas (botón «Capas» abajo a la derecha del mapa)
++
++| Capa | Fuente | Notas |
++|---|---|---|
++| **Oscuro** | Esri Dark Gray Canvas | base del diseño, sin API key |
++| **Satélite** | Esri World Imagery | imagen real (Maxar/Earthstar) |
++| **Terreno** | Esri World Topo Map | invertido por CSS para que quede en modo oscuro |
++| **Relieve** | Esri World Shaded Relief | sombreado de relieve, invertido por CSS |
++| **Etiquetas** | Esri Reference / Boundaries & Places | toggle independiente sobre satélite y oscuro |
++| **Vista 3D** | MapLibre GL 4.7 | globo 3D + terreno real (DEM) |
++
++## Vista 3D (tipo Google Earth)
++
++- Motor: **MapLibre GL JS 4.7** (open source, sin API key ni cuenta).
++- Proyección **globo** (`setProjection({type:'globe'})`) + `pitch` de 38° al abrir.
++- **Terreno real** desde `elevation-tiles-prod` (AWS Terrain Tiles, terrarium, sin key).
++- **Piel satelital** Esri World Imagery.
++- Marcadores HUD propios (halo + punto con glow) dibujados como `HTMLElement`, no imagen.
++- `flyTo` al seleccionar un evento desde la lista o el mapa.
++- `ResizeObserver` para que el canvas siga al panel cuando cambia de tamaño.
++- La vista 3D se carga con `React.lazy` → no pesa en el bundle inicial del 2D.
++
++## Notas técnicas
++
++- El worker de MapLibre necesita que el paquete pase por el dep optimizer de Vite
++  (no agregar `optimizeDeps.exclude`), por eso el import usa namespace + interop
++  (`ns.default ?? ns`) para funcionar tanto en dev como en build.
++- El CSS de `maplibre-gl` pone `position: relative` en el contenedor: el div del mapa
++  debe tener altura real (`h-full min-h-[300px]`), no `absolute inset-0`, o el canvas queda en 0 px.
++- Los mapas claros (Terreno/Relieve) se oscurecen con `filter: invert() hue-rotate() brightness()`
++  en `.leaflet-tile-pane` según `data-basemap`.
++
++
++## Mapa de calor de densidad
++
++- Disponible en **2D y 3D** desde el panel de capas («Mapa de calor»).
++- 2D: `leaflet.heat` con degradado azul → cian → ámbar → naranja → rojo.
++- 3D: capa nativa `heatmap` de MapLibre sobre GeoJSON, con radio e intensidad
++  interpolados por zoom (26 px a escala mundo, 74 px a zoom 12), opacidad 0.9.
++- El peso de cada evento depende de la severidad: crítico 1.0 · alto 0.72 ·
++  medio 0.45 · bajo 0.2.
++- Al activarlo, los marcadores bajan a 35 % de opacidad para no saturar la lectura.
++
++## Edificios 3D
++
++- Fuente: **OpenFreeMap** (`tiles.openfreemap.org`, OpenMapTiles, sin API key),
++  capa `building` con altura real (`render_height` / `building:levels`).
++- Se muestran a partir de **zoom 13** y solo en vista 3D.
++- Al activar el interruptor, la cámara vuela a una ciudad: el evento seleccionado
++  o **Bogotá** por defecto, a zoom 15 y 62° de inclinación.
++- Color por altura (azul profundo → cian) con degradado vertical, para que encaje
++  con la paleta del panel.
++- Topónimos: capa `place` de la misma fuente vectorial (Noto Sans desde
++  demotiles.maplibre.org), con halo oscuro.
++
++## Agrupación de eventos (clusters)
++
++- **2D**: `ClusterLayer` agrupa los eventos por celdas de 56 px en la proyección
++  actual y fusiona los grupos cuyos centroides quedan a menos de 40 px, para que
++  las burbujas nunca se pisen. Cada burbuja muestra el número de eventos y se
++  pinta cian, o naranja si el grupo contiene algún evento alto/crítico.
++- **3D**: fuente GeoJSON `eventosCluster` con `cluster: true`, `clusterRadius: 46`
++  y `clusterMaxZoom: 6`; halo, disco y contador como tres capas `circle` con
++  texto en `Open Sans Semibold`.
++- **Clic en un grupo** → `easeTo` al centro del grupo y zoom de expansión
++  (se pide a MapLibre; si no responde en ~400 ms se usa un paso por tamaño del
++  grupo: +2.6 con 50+ eventos, +2.2 con 10+, +1.8 con menos), siempre con tope 12.
++- **Clic en un evento suelto** → se selecciona y se abre su ficha, igual que en la lista.
++- Con el mapa de calor activo, burbujas y puntos bajan de opacidad.
++
++## Línea de tiempo (últimas 24 h)
++
++- Interruptor «Línea de tiempo» en el panel de capas; la barra aparece abajo,
++  centrada, y el panel de capas se eleva para no taparla.
++- Filtra los eventos a la ventana `[ahora − 24 h, ahora − horasAgo]`, así que
++  al reproducir el mapa se va poblando desde la izquierda hasta «ahora».
++- **Play/pausa** avanza en pasos de 15 min cada 110 ms (≈ 2.9 s para 24 h) y el
++  slider (paso 0.25 h) permite saltar a cualquier instante; arrastrarlo pausa.
++- El calor, las burbujas y los contadores del panel lateral se recalculan con la
++  ventana, de modo que el mapa «respira» durante la reproducción.
++- Al activarla arranca en «ahora» con las 24 h completas; al pulsar play se
++  rebobina al inicio.
++- La ventana activa se muestra como `18:40 → ahora` sobre el slider y las
++  atribuciones del mapa se suben 92 px para dejar libre la barra.
++
++## Capturas
++
++`mapa-capas.png`, `mapa-satelite.png`, `mapa-3d.png`, `mapa-3d-zoom.png`,
++`mapa-terreno.png`, `heat-2d.png`, `heat-3d.png`, `edificios-3d.png`,
++`clusters-mapa.png`, `clusters-zoom.png`, `clusters-3d.png`,
++`timeline-24h.png`, `timeline-replay.png`, `timeline-3d.png`.
+diff --git a/package.json b/package.json
+index 4b1f068..0152012 100644
+--- a/package.json
++++ b/package.json
+@@ -14,8 +14,9 @@
+     "chart.js": "^4.5.1",
+     "framer-motion": "^14.3.0",
+     "leaflet": "^1.9.4",
++    "leaflet.heat": "^0.2.0",
+     "lucide-react": "^1.59.0",
+-    "maplibre-gl": "^6.14.0",
++    "maplibre-gl": "^4.7.1",
+     "react": "^18.2.0",
+     "react-chartjs-2": "^5.3.1",
+     "react-dom": "^18.2.0",
+diff --git a/src/App.tsx b/src/App.tsx
+index 371697d..3286775 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
+ import { motion, AnimatePresence } from 'framer-motion'
+ import { WifiOff, X } from 'lucide-react'
+ import Map from './components/Map'
+-import Map3D from './components/Map3D'
+ import Dashboard from './components/Dashboard'
+ import Header from './components/Header'
+ import AuthModal from './components/AuthModal'
+ import EventDetailCard from './components/EventDetailCard'
+ import { DisasterEvent } from './types'
++import type { TimelineState } from './components/Map'
+ import { fetchDisasterEvents, getMe, setAuthToken, AuthUser } from './services/api'
+ import { DEMO_EVENTS } from './data/demoEvents'
+ 
+@@ -21,11 +21,15 @@ function App() {
+     types: ['earthquake', 'storm', 'flood', 'rain', 'landslide', 'volcanic'] as string[],
+     timeRange: '24h' as '1h' | '24h' | '7d',
+   })
++  const [timeline, setTimeline] = useState<TimelineState>({
++    enabled: false,
++    hoursAgo: 0,
++    playing: false,
++  })
+   const [user, setUser] = useState<AuthUser | null>(null)
+   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
+   const [showAuthModal, setShowAuthModal] = useState(false)
+   const [showErrorToast, setShowErrorToast] = useState(true)
+-  const [mapMode, setMapMode] = useState<'2d' | '3d'>('2d')
+ 
+   /* ---------- Auth ---------- */
+   useEffect(() => {
+@@ -79,15 +83,39 @@ function App() {
+     return () => clearTimeout(t)
+   }, [error])
+ 
++  /* ---------- Reproducción de la línea de tiempo ---------- */
++  useEffect(() => {
++    if (!timeline.playing) return
++    const id = setInterval(() => {
++      setTimeline((t) => {
++        const next = +(t.hoursAgo - 0.25).toFixed(2)
++        if (next <= 0) return { ...t, hoursAgo: 0, playing: false }
++        return { ...t, hoursAgo: next }
++      })
++    }, 110)
++    return () => clearInterval(id)
++  }, [timeline.playing])
++
+   /* ---------- Filtrado local (también en modo demo) ---------- */
+   const visibleEvents = useMemo(() => {
+-    if (!demo) return events
++    const byType = events.filter((e) => filters.types.includes(e.type))
+     const now = Date.now()
+-    const windowMs = filters.timeRange === '1h' ? 3_600_000 : filters.timeRange === '24h' ? 86_400_000 : 604_800_000
+-    return events.filter(
+-      (e) => filters.types.includes(e.type) && now - new Date(e.detectedAt).getTime() <= windowMs
+-    )
+-  }, [events, demo, filters])
++
++    // Con la línea de tiempo activa: ventana [ahora-24h, ahora-hoursAgo]
++    if (timeline.enabled) {
++      const start = now - 24 * 3_600_000
++      const cutoff = now - timeline.hoursAgo * 3_600_000
++      return byType.filter((e) => {
++        const t = new Date(e.detectedAt).getTime()
++        return t >= start && t <= cutoff
++      })
++    }
++
++    if (!demo) return byType
++    const windowMs =
++      filters.timeRange === '1h' ? 3_600_000 : filters.timeRange === '24h' ? 86_400_000 : 604_800_000
++    return byType.filter((e) => now - new Date(e.detectedAt).getTime() <= windowMs)
++  }, [events, demo, filters, timeline.enabled, timeline.hoursAgo])
+ 
+   return (
+     <div className="relative flex flex-col min-h-screen lg:h-screen bg-[#0b131d] text-slate-200 antialiased lg:overflow-hidden">
+@@ -120,44 +148,15 @@ function App() {
+         {/* ---------- Mapa ---------- */}
+         <section className="relative h-[46vh] min-h-[300px] lg:h-auto lg:flex-1 lg:min-h-0">
+           <div className="panel w-full h-full overflow-hidden">
+-            {mapMode === '2d' ? (
+-              <Map
+-                events={visibleEvents}
+-                selectedEvent={selectedEvent}
+-                onSelectEvent={setSelectedEvent}
+-                loading={loading}
+-              />
+-            ) : (
+-              <Map3D
+-                events={visibleEvents}
+-                selectedEvent={selectedEvent}
+-                onSelectEvent={setSelectedEvent}
+-              />
+-            )}
++            <Map
++              events={visibleEvents}
++              selectedEvent={selectedEvent}
++              onSelectEvent={setSelectedEvent}
++              loading={loading}
++              timeline={timeline}
++              onTimelineChange={(next) => setTimeline((t) => ({ ...t, ...next }))}
++            />
+             <EventDetailCard event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+-            {/* Toggle 2D/3D */}
+-            <div className="absolute top-2.5 right-2.5 z-10 flex gap-1 p-1 bg-surfaceElev/80 border border-border rounded-lg backdrop-blur-md">
+-              <button
+-                onClick={() => setMapMode('2d')}
+-                className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${
+-                  mapMode === '2d'
+-                    ? 'bg-[#38bdf8]/15 text-[#38bdf8] border border-[#38bdf8]/30'
+-                    : 'text-slate-400 hover:text-slate-300'
+-                }`}
+-              >
+-                2D
+-              </button>
+-              <button
+-                onClick={() => setMapMode('3d')}
+-                className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${
+-                  mapMode === '3d'
+-                    ? 'bg-[#38bdf8]/15 text-[#38bdf8] border border-[#38bdf8]/30'
+-                    : 'text-slate-400 hover:text-slate-300'
+-                }`}
+-              >
+-                3D
+-              </button>
+-            </div>
+ 
+             {/* Aviso de backend (se oculta solo a los 9 s) */}
+             <AnimatePresence>
+diff --git a/src/components/Map.tsx b/src/components/Map.tsx
+index 9db4d56..2edc9e5 100644
+--- a/src/components/Map.tsx
++++ b/src/components/Map.tsx
+@@ -1,35 +1,84 @@
+-import { useEffect, useRef } from 'react'
+-import { motion } from 'framer-motion'
+-import { Search, Crosshair, Plus, Minus } from 'lucide-react'
+-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
++import { lazy, Suspense, useEffect, useRef, useState } from 'react'
++import { motion, AnimatePresence } from 'framer-motion'
++import { Search, Crosshair, Plus, Minus, Layers, Box, Tag, Check, Flame, Building2, Play, Pause, History } from 'lucide-react'
++import { MapContainer, TileLayer, useMap } from 'react-leaflet'
+ import L from 'leaflet'
++import 'leaflet.heat'
+ import { DisasterEvent } from '../types'
+ 
++const Map3D = lazy(() => import('./Map3D'))
++
++export interface TimelineState {
++  enabled: boolean
++  hoursAgo: number   // 0 = ahora · 24 = hace 24 h
++  playing: boolean
++}
++
+ interface MapProps {
+   events: DisasterEvent[]
+   selectedEvent: DisasterEvent | null
+   onSelectEvent: (event: DisasterEvent | null) => void
+   loading: boolean
++  timeline: TimelineState
++  onTimelineChange: (next: Partial<TimelineState>) => void
++}
++
++/* ------------------------------------------------------------------ */
++/*  Estilos de mapa (sin API key)                                     */
++/* ------------------------------------------------------------------ */
++type BasemapId = 'dark' | 'sat' | 'topo' | 'relief'
++
++const BASEMAPS: Record<BasemapId, {
++  label: string
++  base: string
++  overlay?: string
++  swatch: string
++}> = {
++  dark: {
++    label: 'Oscuro',
++    base: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
++    overlay: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
++    swatch: 'linear-gradient(135deg,#16222f,#0b131d 70%)',
++  },
++  sat: {
++    label: 'Satélite',
++    base: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
++    overlay: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
++    swatch: 'linear-gradient(135deg,#2f5d3a,#123047 45%,#0c1b2a 80%)',
++  },
++  topo: {
++    label: 'Terreno',
++    base: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
++    swatch: 'linear-gradient(135deg,#5b6b3f,#31425a 55%,#12202e 85%)',
++  },
++  relief: {
++    label: 'Relieve',
++    base: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}',
++    swatch: 'linear-gradient(135deg,#6b5b46,#3a4356 55%,#111a26 85%)',
++  },
+ }
+ 
+-// --- Teselas oscuras sin API key (Esri Dark Gray Canvas) ---
+-const TILE_URL =
+-  'https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'
+-const TILE_ATTR = 'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, OpenStreetMap'
++const TILE_ATTR = 'Tiles &copy; Esri &mdash; Esri, Maxar, Earthstar Geographics, OpenStreetMap'
+ 
+-// --- Configuración visual por severidad ---
++/* ------------------------------------------------------------------ */
++/*  Marcadores                                                        */
++/* ------------------------------------------------------------------ */
+ function getSeverityConfig(severity: string) {
+   switch (severity) {
+-    case 'critical':
+-      return { color: '#f87171', size: 30, animated: true, label: 'CRÍTICO' }
+-    case 'high':
+-      return { color: '#fb923c', size: 26, animated: true, label: 'ALTO' }
+-    case 'medium':
+-      return { color: '#fbbf24', size: 22, animated: true, label: 'MEDIO' }
+-    case 'low':
+-      return { color: '#38bdf8', size: 18, animated: false, label: 'BAJO' }
+-    default:
+-      return { color: '#64748b', size: 18, animated: false, label: 'NORMAL' }
++    case 'critical': return { color: '#f87171', size: 30, animated: true, label: 'CRÍTICO' }
++    case 'high':     return { color: '#fb923c', size: 26, animated: true, label: 'ALTO' }
++    case 'medium':   return { color: '#fbbf24', size: 22, animated: true, label: 'MEDIO' }
++    case 'low':      return { color: '#38bdf8', size: 18, animated: false, label: 'BAJO' }
++    default:         return { color: '#64748b', size: 18, animated: false, label: 'NORMAL' }
++  }
++}
++
++function severityWeight(severity: string): number {
++  switch (severity) {
++    case 'critical': return 1
++    case 'high': return 0.72
++    case 'medium': return 0.45
++    default: return 0.2
+   }
+ }
+ 
+@@ -57,7 +106,9 @@ function createCustomIcon(event: DisasterEvent, selected: boolean): L.DivIcon {
+   })
+ }
+ 
+-// Auto-encuadre inicial
++/* ------------------------------------------------------------------ */
++/*  Capas internas de Leaflet                                         */
++/* ------------------------------------------------------------------ */
+ function FitBounds({ events }: { events: DisasterEvent[] }) {
+   const map = useMap()
+   const hasFit = useRef(false)
+@@ -77,7 +128,6 @@ function FitBounds({ events }: { events: DisasterEvent[] }) {
+   return null
+ }
+ 
+-// Líneas de conexión sutiles entre eventos del mismo tipo
+ function EventConnections({ events }: { events: DisasterEvent[] }) {
+   const map = useMap()
+ 
+@@ -97,17 +147,8 @@ function EventConnections({ events }: { events: DisasterEvent[] }) {
+         )
+         if (dist > 0.4 && dist < 4) {
+           L.polyline(
+-            [
+-              [a.latitude, a.longitude],
+-              [b.latitude, b.longitude],
+-            ],
+-            {
+-              color: '#38bdf8',
+-              weight: 1,
+-              opacity: 0.14,
+-              dashArray: '4, 7',
+-              lineCap: 'round',
+-            }
++            [[a.latitude, a.longitude], [b.latitude, b.longitude]],
++            { color: '#38bdf8', weight: 1, opacity: 0.14, dashArray: '4, 7', lineCap: 'round' }
+           ).addTo(group)
+           pairs++
+         }
+@@ -122,8 +163,189 @@ function EventConnections({ events }: { events: DisasterEvent[] }) {
+   return null
+ }
+ 
+-export default function Map({ events, selectedEvent, onSelectEvent, loading }: MapProps) {
++/** Agrupa eventos en burbujas; al hacer clic se acerca a la zona. */
++function ClusterLayer({
++  events,
++  selectedEvent,
++  onSelectEvent,
++  heatmap,
++}: {
++  events: DisasterEvent[]
++  selectedEvent: DisasterEvent | null
++  onSelectEvent: (event: DisasterEvent | null) => void
++  heatmap: boolean
++}) {
++  const map = useMap()
++
++  useEffect(() => {
++    const Leaflet: any = L
++    const group: any = Leaflet.layerGroup().addTo(map)
++
++    const rebuild = () => {
++      group.clearLayers()
++
++      const zoom = map.getZoom()
++      const cell = 56 // px
++      const buckets = new globalThis.Map<string, DisasterEvent[]>()
++
++      for (const ev of events) {
++        const p: any = (map as any).project([ev.latitude, ev.longitude], zoom)
++        const key = `${Math.floor(p.x / cell)}:${Math.floor(p.y / cell)}`
++        const arr = buckets.get(key)
++        if (arr) arr.push(ev)
++        else buckets.set(key, [ev])
++      }
++
++      // fusiona grupos cuyos centroides quedan a menos de 40 px
++      const groups = Array.from(buckets.values())
++      const merged: DisasterEvent[][] = []
++      const centroid = (arr: DisasterEvent[]) => [
++        arr.reduce((sum, e) => sum + e.latitude, 0) / arr.length,
++        arr.reduce((sum, e) => sum + e.longitude, 0) / arr.length,
++      ]
++      for (const arr of groups) {
++        const [lat, lng] = centroid(arr)
++        const p: any = (map as any).project([lat, lng], zoom)
++        const host = merged.find((m) => {
++          const [mlat, mlng] = centroid(m)
++          const mp: any = (map as any).project([mlat, mlng], zoom)
++          return Math.hypot(mp.x - p.x, mp.y - p.y) < 40
++        })
++        if (host) host.push(...arr)
++        else merged.push([...arr])
++      }
++
++      merged.forEach((arr) => {
++        if (arr.length === 1) {
++          const ev = arr[0]
++          const marker = Leaflet.marker([ev.latitude, ev.longitude], {
++            icon: createCustomIcon(ev, selectedEvent?.id === ev.id),
++            zIndexOffset: selectedEvent?.id === ev.id ? 1000 : 0,
++            title: ev.title,
++          })
++          marker.on('click', () => onSelectEvent(ev))
++          group.addLayer(marker)
++          return
++        }
++
++        const lat = arr.reduce((sum, e) => sum + e.latitude, 0) / arr.length
++        const lng = arr.reduce((sum, e) => sum + e.longitude, 0) / arr.length
++        const hasHigh = arr.some((e) => e.severity === 'high' || e.severity === 'critical')
++        const color = hasHigh ? '#fb923c' : '#22d3ee'
++        const size = arr.length >= 50 ? 48 : arr.length >= 10 ? 40 : 34
++
++        const icon = Leaflet.divIcon({
++          className: 'a360-wrap',
++          html: `<div class="a360-bubble" style="--c:${color};width:${size}px;height:${size}px">
++                   <span>${arr.length}</span>
++                 </div>`,
++          iconSize: [size, size],
++          iconAnchor: [size / 2, size / 2],
++        })
++
++        const marker = Leaflet.marker([lat, lng], { icon, title: `${arr.length} eventos` })
++        marker.on('click', () => {
++          const bounds = Leaflet.latLngBounds(arr.map((e) => [e.latitude, e.longitude] as [number, number]))
++          map.fitBounds(bounds, {
++            padding: [60, 60],
++            maxZoom: Math.min(zoom + 2.5, 10),
++            animate: true,
++            duration: 0.6,
++          })
++        })
++        group.addLayer(marker)
++      })
++
++      // con calor activo, atenuar los marcadores
++      group.eachLayer((layer: any) => {
++        const el: HTMLElement | undefined = layer.getElement?.()
++        if (el) {
++          el.style.opacity = heatmap ? '0.35' : '1'
++          el.style.transition = 'opacity .25s ease'
++        }
++      })
++    }
++
++    rebuild()
++    map.on('zoomend', rebuild)
++    map.on('moveend', rebuild)
++
++    return () => {
++      map.off('zoomend', rebuild)
++      map.off('moveend', rebuild)
++      map.removeLayer(group)
++    }
++  }, [map, events, selectedEvent, onSelectEvent, heatmap])
++
++  return null
++}
++
++/** Mapa de calor de densidad (leaflet.heat), ponderado por severidad. */
++function HeatLayer({ events, visible }: { events: DisasterEvent[]; visible: boolean }) {
++  const map = useMap()
++  const layerRef = useRef<any>(null)
++
++  useEffect(() => {
++    if (!visible) {
++      if (layerRef.current) {
++        map.removeLayer(layerRef.current)
++        layerRef.current = null
++      }
++      return
++    }
++
++    const points = events.map(
++      (e) => [e.latitude, e.longitude, severityWeight(e.severity)] as [number, number, number]
++    )
++
++    const layer = (L as any).heatLayer(points, {
++      radius: 30,
++      blur: 24,
++      maxZoom: 7,
++      minOpacity: 0.22,
++      max: 1.4,
++      gradient: {
++        0.15: '#0b3a55',
++        0.35: '#0ea5e9',
++        0.55: '#38bdf8',
++        0.72: '#fbbf24',
++        0.88: '#fb923c',
++        1.0: '#f87171',
++      },
++    })
++
++    layer.addTo(map)
++    layerRef.current = layer
++
++    return () => {
++      if (layerRef.current) {
++        map.removeLayer(layerRef.current)
++        layerRef.current = null
++      }
++    }
++  }, [map, events, visible])
++
++  return null
++}
++
++/* ------------------------------------------------------------------ */
++/*  Mapa                                                             */
++/* ------------------------------------------------------------------ */
++export default function Map({
++  events,
++  selectedEvent,
++  onSelectEvent,
++  loading,
++  timeline,
++  onTimelineChange,
++}: MapProps) {
+   const mapRef = useRef<L.Map | null>(null)
++  const [basemap, setBasemap] = useState<BasemapId>('dark')
++  const [showLabels, setShowLabels] = useState(true)
++  const [is3D, setIs3D] = useState(false)
++  const [heatmap, setHeatmap] = useState(false)
++  const [buildings, setBuildings] = useState(false)
++  const [layersOpen, setLayersOpen] = useState(false)
+ 
+   const handleFitBounds = () => {
+     const map = mapRef.current
+@@ -139,145 +361,388 @@ export default function Map({ events, selectedEvent, onSelectEvent, loading }: M
+     mapRef.current?.setView([20, 10], 2, { animate: true })
+   }
+ 
++  const style = BASEMAPS[basemap]
++
++  // ventana de la línea de tiempo, p. ej. "18:40 → ahora"
++  const timelineWindow = (() => {
++    if (!timeline.enabled) return ''
++    const fmt = (d: Date) =>
++      d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false })
++    const start = new Date(Date.now() - 24 * 3_600_000)
++    const end = new Date(Date.now() - timeline.hoursAgo * 3_600_000)
++    return timeline.hoursAgo < 0.05 ? `${fmt(start)} → ahora` : `${fmt(start)} → ${fmt(end)}`
++  })()
++
+   return (
+-    <div className="relative w-full h-full">
+-      {/* ---------- Mapa ---------- */}
+-      <MapContainer
+-        center={[20, 10]}
+-        zoom={2}
+-        minZoom={1.5}
+-        maxZoom={16}
+-        style={{ width: '100%', height: '100%' }}
+-        ref={mapRef}
+-        zoomControl={false}
+-        attributionControl={false}
+-        className="z-0"
+-      >
+-        <TileLayer url={TILE_URL} attribution={TILE_ATTR} maxZoom={19} />
+-
+-        <FitBounds events={events} />
+-        <EventConnections events={events} />
+-
+-        {events.map((event) => (
+-          <Marker
+-            key={event.id}
+-            position={[event.latitude, event.longitude]}
+-            icon={createCustomIcon(event, selectedEvent?.id === event.id)}
+-            eventHandlers={{ click: () => onSelectEvent(event) }}
+-            title={event.title}
+-            zIndexOffset={selectedEvent?.id === event.id ? 1000 : 0}
+-          >
+-            <Popup>
+-              <div className="min-w-[250px]">
+-                <div className="flex items-start gap-2 mb-2">
+-                  <span
+-                    className="mt-0.5 w-2.5 h-2.5 rounded-full shrink-0"
+-                    style={{ background: getSeverityConfig(event.severity).color, boxShadow: `0 0 8px ${getSeverityConfig(event.severity).color}` }}
+-                  />
+-                  <div>
+-                    <h4 className="font-bold text-[13px] text-white leading-snug">{event.title}</h4>
+-                    <span
+-                      className="text-[10px] font-bold uppercase tracking-wider"
+-                      style={{ color: getSeverityConfig(event.severity).color }}
+-                    >
+-                      {getSeverityConfig(event.severity).label}
+-                    </span>
+-                  </div>
+-                </div>
+-                <p className="text-[11.5px] text-slate-400 leading-relaxed mb-2">
+-                  {event.description}
+-                </p>
+-                <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-white/10">
+-                  <span className="font-mono">{event.source}</span>
+-                  <span>
+-                    {new Date(event.detectedAt).toLocaleTimeString('es-ES', {
+-                      hour: '2-digit',
+-                      minute: '2-digit',
+-                      hour12: false,
+-                    })}
+-                  </span>
+-                </div>
++    <div
++      className="relative w-full h-full"
++      data-basemap={basemap}
++      data-timeline={timeline.enabled ? 'true' : 'false'}
++      data-3d={is3D ? 'on' : 'off'}
++    >
++      {/* ---------------- 2D ---------------- */}
++      {!is3D && (
++        <MapContainer
++          center={[20, 10]}
++          zoom={2}
++          minZoom={1.5}
++          maxZoom={16}
++          style={{ width: '100%', height: '100%' }}
++          ref={mapRef}
++          zoomControl={false}
++          attributionControl={false}
++          className="z-0"
++        >
++          <TileLayer key={`base-${basemap}`} url={style.base} attribution={TILE_ATTR} maxZoom={19} />
++
++          {style.overlay && showLabels && (
++            <TileLayer
++              key={`ov-${basemap}`}
++              url={style.overlay}
++              maxZoom={19}
++              opacity={basemap === 'sat' ? 0.55 : 0.85}
++            />
++          )}
++
++          <FitBounds events={events} />
++          <EventConnections events={events} />
++          <HeatLayer events={events} visible={heatmap} />
++
++          <ClusterLayer
++            events={events}
++            selectedEvent={selectedEvent}
++            onSelectEvent={onSelectEvent}
++            heatmap={heatmap}
++          />
++
++        </MapContainer>
++      )}
++
++      {/* ---------------- 3D ---------------- */}
++      {is3D && (
++        <Suspense
++          fallback={
++            <div className="w-full h-full grid place-items-center bg-[#0b131d]">
++              <div className="flex items-center gap-3 text-slate-400 text-sm">
++                <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
++                Cargando vista 3D…
+               </div>
+-            </Popup>
+-          </Marker>
+-        ))}
+-      </MapContainer>
+-
+-      {/* ---------- Tinte azulado sobre el mapa ---------- */}
+-      <div className="absolute inset-0 z-[5] pointer-events-none bg-[#0b2136]/25 mix-blend-screen" />
+-
+-      {/* ---------- Retícula central ---------- */}
+-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10 opacity-40">
+-        <div className="relative w-6 h-6">
+-          <div className="absolute inset-0 rounded-full border border-slate-500/40" />
+-          <div className="absolute left-1/2 top-1/2 w-[1px] h-3 -translate-x-1/2 -translate-y-[26px] bg-slate-500/30" />
+-          <div className="absolute left-1/2 top-1/2 w-[1px] h-3 -translate-x-1/2 translate-y-[14px] bg-slate-500/30" />
+-          <div className="absolute top-1/2 left-1/2 h-[1px] w-3 -translate-y-1/2 -translate-x-[26px] bg-slate-500/30" />
+-          <div className="absolute top-1/2 left-1/2 h-[1px] w-3 -translate-y-1/2 translate-x-[14px] bg-slate-500/30" />
++            </div>
++          }
++        >
++          <Map3D
++            events={events}
++            selectedEvent={selectedEvent}
++            onSelectEvent={onSelectEvent}
++            heatmap={heatmap}
++            buildings={buildings}
++            showLabels={showLabels}
++          />
++        </Suspense>
++      )}
++
++      {/* Tinte azulado: sólo sobre el mapa oscuro */}
++      {!is3D && basemap === 'dark' && (
++        <div className="absolute inset-0 z-[400] pointer-events-none bg-[#0b2136]/25 mix-blend-screen" />
++      )}
++
++      {/* Retícula central (sólo 2D) */}
++      {!is3D && (
++        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-[410] opacity-40">
++          <div className="relative w-6 h-6">
++            <div className="absolute inset-0 rounded-full border border-slate-500/40" />
++            <div className="absolute left-1/2 top-1/2 w-[1px] h-3 -translate-x-1/2 -translate-y-[26px] bg-slate-500/30" />
++            <div className="absolute left-1/2 top-1/2 w-[1px] h-3 -translate-x-1/2 translate-y-[14px] bg-slate-500/30" />
++            <div className="absolute top-1/2 left-1/2 h-[1px] w-3 -translate-y-1/2 -translate-x-[26px] bg-slate-500/30" />
++            <div className="absolute top-1/2 left-1/2 h-[1px] w-3 -translate-y-1/2 translate-x-[14px] bg-slate-500/30" />
++          </div>
+         </div>
+-      </div>
++      )}
+ 
+-      {/* ---------- Zoom (arriba-izquierda, como el mockup) ---------- */}
+-      <motion.div
+-        initial={{ opacity: 0, x: -8 }}
+-        animate={{ opacity: 1, x: 0 }}
+-        className="absolute top-4 left-4 z-30 flex flex-col rounded-xl overflow-hidden
+-                   bg-[#0e1a26]/85 backdrop-blur-md border border-white/10
+-                   shadow-[0_10px_30px_-10px_rgba(0,0,0,.8)]"
++      {/* ---------------- Controles 2D ---------------- */}
++      {!is3D && (
++        <>
++          <motion.div
++            initial={{ opacity: 0, x: -8 }}
++            animate={{ opacity: 1, x: 0 }}
++            className="absolute top-4 left-4 z-[500] flex flex-col rounded-xl overflow-hidden
++                       bg-[#0e1a26]/85 backdrop-blur-md border border-white/10
++                       shadow-[0_10px_30px_-10px_rgba(0,0,0,.8)]"
++          >
++            <button
++              onClick={() => mapRef.current?.zoomIn()}
++              title="Acercar"
++              className="w-9 h-9 grid place-items-center text-slate-300 hover:text-cyan-300 hover:bg-white/5 transition"
++            >
++              <Plus className="w-4 h-4" />
++            </button>
++            <div className="h-px bg-white/10" />
++            <button
++              onClick={() => mapRef.current?.zoomOut()}
++              title="Alejar"
++              className="w-9 h-9 grid place-items-center text-slate-300 hover:text-cyan-300 hover:bg-white/5 transition"
++            >
++              <Minus className="w-4 h-4" />
++            </button>
++          </motion.div>
++
++          <div className="absolute top-4 right-4 z-[500] flex flex-col gap-2">
++            <motion.button
++              whileHover={{ scale: 1.06 }}
++              whileTap={{ scale: 0.95 }}
++              onClick={handleFitBounds}
++              title="Ajustar vista a todos los eventos"
++              className="w-9 h-9 grid place-items-center rounded-xl
++                         bg-[#0e1a26]/85 backdrop-blur-md border border-white/10
++                         text-slate-300 hover:text-cyan-300 hover:border-cyan-300/40
++                         shadow-[0_10px_30px_-10px_rgba(0,0,0,.8)] transition-colors"
++            >
++              <Search className="w-4 h-4" />
++            </motion.button>
++            <motion.button
++              whileHover={{ scale: 1.06 }}
++              whileTap={{ scale: 0.95 }}
++              onClick={handleReset}
++              title="Restablecer vista"
++              className="w-9 h-9 grid place-items-center rounded-xl
++                         bg-[#0e1a26]/85 backdrop-blur-md border border-white/10
++                         text-slate-300 hover:text-slate-100 hover:border-white/25
++                         shadow-[0_10px_30px_-10px_rgba(0,0,0,.8)] transition-colors"
++            >
++              <Crosshair className="w-4 h-4" />
++            </motion.button>
++          </div>
++        </>
++      )}
++
++      {/* ---------------- Panel de capas ---------------- */}
++      <div
++        className={`absolute right-3 z-[600] flex flex-col items-end gap-2 transition-[bottom] duration-300 ${
++          timeline.enabled ? 'bottom-[104px]' : 'bottom-3'
++        }`}
+       >
+-        <button
+-          onClick={() => mapRef.current?.zoomIn()}
+-          title="Acercar"
+-          className="w-9 h-9 grid place-items-center text-slate-300 hover:text-cyan-300 hover:bg-white/5 transition"
+-        >
+-          <Plus className="w-4 h-4" />
+-        </button>
+-        <div className="h-px bg-white/10" />
+-        <button
+-          onClick={() => mapRef.current?.zoomOut()}
+-          title="Alejar"
+-          className="w-9 h-9 grid place-items-center text-slate-300 hover:text-cyan-300 hover:bg-white/5 transition"
+-        >
+-          <Minus className="w-4 h-4" />
+-        </button>
+-      </motion.div>
++        <AnimatePresence>
++          {layersOpen && (
++            <motion.div
++              initial={{ opacity: 0, y: 8, scale: 0.97 }}
++              animate={{ opacity: 1, y: 0, scale: 1 }}
++              exit={{ opacity: 0, y: 8, scale: 0.97 }}
++              transition={{ duration: 0.16 }}
++              className="w-[224px] rounded-2xl overflow-hidden
++                         bg-[#0f1c29]/95 backdrop-blur-xl border border-white/10
++                         shadow-[0_24px_60px_-20px_rgba(0,0,0,.95)]"
++            >
++              <div className="px-3 pt-2.5 pb-1.5 flex items-center justify-between">
++                <span className="text-[9.5px] font-bold tracking-[0.16em] text-slate-400">
++                  CAPAS DE MAPA
++                </span>
++              </div>
++
++              <div className="grid grid-cols-2 gap-1.5 px-2">
++                {(Object.keys(BASEMAPS) as BasemapId[]).map((id) => {
++                  const active = basemap === id && !is3D
++                  return (
++                    <button
++                      key={id}
++                      onClick={() => {
++                        setBasemap(id)
++                        setIs3D(false)
++                      }}
++                      className={`group relative rounded-lg overflow-hidden border transition
++                        ${active ? 'border-cyan-400/70' : 'border-white/10 hover:border-white/25'}`}
++                    >
++                      <span className="block h-9 w-full" style={{ background: BASEMAPS[id].swatch }} />
++                      <span className="absolute inset-x-0 bottom-0 px-1.5 py-0.5 text-[9.5px] font-semibold
++                                       text-slate-200 bg-black/45 backdrop-blur-sm text-left">
++                        {BASEMAPS[id].label}
++                      </span>
++                      {active && (
++                        <span className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-cyan-400 grid place-items-center">
++                          <Check className="w-2.5 h-2.5 text-[#06222b]" strokeWidth={3} />
++                        </span>
++                      )}
++                    </button>
++                  )
++                })}
++              </div>
++
++              <div className="p-2 space-y-1.5">
++                <Toggle
++                  active={is3D}
++                  onClick={() => setIs3D((v) => !v)}
++                  icon={<Box className="w-3.5 h-3.5" />}
++                  label="Vista 3D"
++                />
++
++                {!is3D && basemap !== 'topo' && basemap !== 'relief' && (
++                  <Toggle
++                    active={showLabels}
++                    onClick={() => setShowLabels((v) => !v)}
++                    icon={<Tag className="w-3.5 h-3.5" />}
++                    label="Etiquetas"
++                  />
++                )}
++
++                {is3D && (
++                  <Toggle
++                    active={showLabels}
++                    onClick={() => setShowLabels((v) => !v)}
++                    icon={<Tag className="w-3.5 h-3.5" />}
++                    label="Ciudades"
++                  />
++                )}
++
++                <Toggle
++                  active={heatmap}
++                  onClick={() => setHeatmap((v) => !v)}
++                  icon={<Flame className="w-3.5 h-3.5" />}
++                  label="Mapa de calor"
++                />
++
++                <Toggle
++                  active={timeline.enabled}
++                  onClick={() =>
++                    onTimelineChange({
++                      enabled: !timeline.enabled,
++                      hoursAgo: 0,
++                      playing: false,
++                    })
++                  }
++                  icon={<History className="w-3.5 h-3.5" />}
++                  label="Línea de tiempo"
++                />
++
++                {is3D && (
++                  <>
++                    <Toggle
++                      active={buildings}
++                      onClick={() => setBuildings((v) => !v)}
++                      icon={<Building2 className="w-3.5 h-3.5" />}
++                      label="Edificios 3D"
++                    />
++                    {buildings && (
++                      <p className="px-1 pt-0.5 text-[9px] leading-snug text-slate-500">
++                        Acércate a una ciudad (zoom 13+) para ver los edificios.
++                      </p>
++                    )}
++                  </>
++                )}
++              </div>
++            </motion.div>
++          )}
++        </AnimatePresence>
+ 
+-      {/* ---------- Acciones (arriba-derecha) ---------- */}
+-      <div className="absolute top-4 right-4 z-30 flex flex-col gap-2">
+-        <motion.button
+-          whileHover={{ scale: 1.06 }}
+-          whileTap={{ scale: 0.95 }}
+-          onClick={handleFitBounds}
+-          title="Ajustar vista a todos los eventos"
+-          className="w-9 h-9 grid place-items-center rounded-xl
+-                     bg-[#0e1a26]/85 backdrop-blur-md border border-white/10
+-                     text-slate-300 hover:text-cyan-300 hover:border-cyan-300/40
+-                     shadow-[0_10px_30px_-10px_rgba(0,0,0,.8)] transition-colors"
+-        >
+-          <Search className="w-4 h-4" />
+-        </motion.button>
+         <motion.button
+-          whileHover={{ scale: 1.06 }}
++          whileHover={{ scale: 1.05 }}
+           whileTap={{ scale: 0.95 }}
+-          onClick={handleReset}
+-          title="Restablecer vista"
+-          className="w-9 h-9 grid place-items-center rounded-xl
+-                     bg-[#0e1a26]/85 backdrop-blur-md border border-white/10
+-                     text-slate-300 hover:text-slate-100 hover:border-white/25
+-                     shadow-[0_10px_30px_-10px_rgba(0,0,0,.8)] transition-colors"
++          onClick={() => setLayersOpen((v) => !v)}
++          title="Capas del mapa"
++          className={`h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-semibold
++                     backdrop-blur-md border transition-colors
++                     shadow-[0_10px_30px_-10px_rgba(0,0,0,.8)]
++                     ${layersOpen
++                       ? 'bg-cyan-400/15 border-cyan-400/50 text-cyan-200'
++                       : 'bg-[#0e1a26]/85 border-white/10 text-slate-300 hover:text-white'}`}
+         >
+-          <Crosshair className="w-4 h-4" />
++          <Layers className="w-4 h-4" />
++          {is3D ? '3D' : BASEMAPS[basemap].label}
+         </motion.button>
+       </div>
+ 
+-      {/* ---------- Atribución discreta ---------- */}
+-      <div className="absolute bottom-2 right-3 z-20 text-[9px] text-slate-600/80 pointer-events-none">
+-        © Esri · OpenStreetMap
+-      </div>
++      {/* ---------------- Línea de tiempo ---------------- */}
++      <AnimatePresence>
++        {timeline.enabled && (
++          <motion.div
++            initial={{ opacity: 0, y: 12 }}
++            animate={{ opacity: 1, y: 0 }}
++            exit={{ opacity: 0, y: 12 }}
++            className="absolute bottom-3 left-3 right-3 z-[600]
++                       rounded-2xl bg-[#0f1c29]/95 backdrop-blur-xl border border-white/10
++                       shadow-[0_24px_60px_-20px_rgba(0,0,0,.95)] px-3 py-2.5 mx-auto max-w-[760px]"
++          >
++            <div className="flex items-center gap-3">
++              <button
++                onClick={() => {
++                  if (timeline.playing) {
++                    onTimelineChange({ playing: false })
++                  } else {
++                    onTimelineChange({ playing: true, hoursAgo: timeline.hoursAgo <= 0 ? 24 : timeline.hoursAgo })
++                  }
++                }}
++                title={timeline.playing ? 'Pausar' : 'Reproducir últimas 24 h'}
++                className={`w-8 h-8 shrink-0 grid place-items-center rounded-lg border transition
++                  ${timeline.playing
++                    ? 'bg-cyan-400/15 border-cyan-400/50 text-cyan-300'
++                    : 'bg-white/[0.04] border-white/10 text-slate-300 hover:text-white hover:border-white/25'}`}
++              >
++                {timeline.playing ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
++              </button>
+ 
+-      {/* ---------- Overlay de carga ---------- */}
++              <div className="flex-1 min-w-0">
++                <div className="flex items-center justify-between gap-2 text-[9.5px] text-slate-500 mb-1">
++                  <span className="shrink-0">−24 h</span>
++                  <span className="text-slate-300 font-semibold tabular-nums truncate">
++                    {timelineWindow}
++                  </span>
++                  <span className="shrink-0">ahora</span>
++                </div>
++
++                <input
++                  type="range"
++                  min={0}
++                  max={24}
++                  step={0.25}
++                  value={24 - timeline.hoursAgo}
++                  onChange={(e) =>
++                    onTimelineChange({
++                      hoursAgo: 24 - Number(e.target.value),
++                      playing: false,
++                    })
++                  }
++                  onInput={(e) =>
++                    onTimelineChange({
++                      hoursAgo: 24 - Number((e.target as HTMLInputElement).value),
++                      playing: false,
++                    })
++                  }
++                  className="w-full h-1.5 appearance-none rounded-full bg-white/10 accent-cyan-400 cursor-pointer
++                             [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3
++                             [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full
++                             [&::-webkit-slider-thumb]:bg-cyan-300 [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(34,211,238,.9)]"
++                  style={{
++                    background: `linear-gradient(90deg, rgba(34,211,238,.75) 0%, rgba(34,211,238,.75) ${
++                      ((24 - timeline.hoursAgo) / 24) * 100
++                    }%, rgba(255,255,255,.10) ${((24 - timeline.hoursAgo) / 24) * 100}%, rgba(255,255,255,.10) 100%)`,
++                  }}
++                />
++              </div>
++
++              <button
++                onClick={() => onTimelineChange({ enabled: false, playing: false })}
++                title="Cerrar línea de tiempo"
++                className="shrink-0 text-[10px] text-slate-500 hover:text-slate-300 px-1"
++              >
++                ✕
++              </button>
++            </div>
++          </motion.div>
++        )}
++      </AnimatePresence>
++
++      {/* Atribución */}
++      {!is3D && (
++        <div
++          className={`absolute left-3 z-[420] text-[9px] text-slate-600/80 pointer-events-none transition-[bottom] duration-300 ${
++            timeline.enabled ? 'bottom-[92px]' : 'bottom-2'
++          }`}
++        >
++          © Esri · OpenStreetMap
++        </div>
++      )}
++
++      {/* Carga */}
+       {loading && (
+-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#0b131d]/55 backdrop-blur-[2px]">
++        <div className="absolute inset-0 z-[700] flex items-center justify-center bg-[#0b131d]/55 backdrop-blur-[2px]">
+           <div className="flex items-center gap-3 px-5 py-3.5 rounded-2xl bg-[#13202e]/90 border border-white/10 shadow-2xl">
+             <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+             <span className="text-sm text-slate-300">Cargando eventos…</span>
+@@ -287,3 +752,39 @@ export default function Map({ events, selectedEvent, onSelectEvent, loading }: M
+     </div>
+   )
+ }
++
++/* ------------------------------------------------------------------ */
++/*  Switch reutilizable del panel                                     */
++/* ------------------------------------------------------------------ */
++function Toggle({
++  active,
++  onClick,
++  icon,
++  label,
++}: {
++  active: boolean
++  onClick: () => void
++  icon: React.ReactNode
++  label: string
++}) {
++  return (
++    <button
++      onClick={onClick}
++      className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg border text-[10.5px] transition
++        ${active
++          ? 'bg-cyan-400/10 border-cyan-400/45 text-cyan-300'
++          : 'bg-white/[0.03] border-white/10 text-slate-300 hover:border-white/25'}`}
++    >
++      <span className="flex items-center gap-1.5">
++        {icon}
++        {label}
++      </span>
++      <span className={`w-7 h-3.5 rounded-full relative transition ${active ? 'bg-cyan-400' : 'bg-white/15'}`}>
++        <span
++          className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white transition-all
++            ${active ? 'left-[15px]' : 'left-0.5'}`}
++        />
++      </span>
++    </button>
++  )
++}
+diff --git a/src/components/Map3D.tsx b/src/components/Map3D.tsx
+index f241cf2..86cef92 100644
+--- a/src/components/Map3D.tsx
++++ b/src/components/Map3D.tsx
+@@ -1,13 +1,20 @@
+ import { useEffect, useRef } from 'react'
+-import * as maplibregl from 'maplibre-gl'
++import * as maplibreglNS from 'maplibre-gl'
+ import 'maplibre-gl/dist/maplibre-gl.css'
+ import { Plus, Minus, Compass } from 'lucide-react'
+ import { DisasterEvent } from '../types'
+ 
++// Interop: con el dep-optimizer de Vite el build CJS expone la API en `default`;
++// en ESM viene en el namespace. Cubrimos ambos casos.
++const maplibregl: any = (maplibreglNS as any).default ?? maplibreglNS
++
+ interface Map3DProps {
+   events: DisasterEvent[]
+   selectedEvent: DisasterEvent | null
+   onSelectEvent: (event: DisasterEvent | null) => void
++  heatmap?: boolean
++  buildings?: boolean
++  showLabels?: boolean
+ }
+ 
+ /* ---------- paleta por severidad ---------- */
+@@ -20,31 +27,52 @@ function severityColor(severity: string): string {
+   }
+ }
+ 
+-function markerElement(event: DisasterEvent, selected: boolean): HTMLElement {
+-  const c = severityColor(event.severity)
+-  const size = selected ? 26 : event.severity === 'high' ? 20 : 16
+-  const el = document.createElement('div')
+-  el.className = 'a360-gl-marker'
+-  el.style.setProperty('--c', c)
+-  el.style.width = `${size}px`
+-  el.style.height = `${size}px`
+-  el.innerHTML = `
+-    <span class="a360-gl-halo"></span>
+-    <span class="a360-gl-dot"></span>
+-  `
+-  el.title = `${event.title} — ${event.source}`
+-  return el
++function severityWeight(severity: string): number {
++  switch (severity) {
++    case 'critical': return 1
++    case 'high': return 0.72
++    case 'medium': return 0.45
++    default: return 0.2
++  }
+ }
+ 
++function toGeoJSON(events: DisasterEvent[]) {
++  return {
++    type: 'FeatureCollection' as const,
++    features: events.map((e) => ({
++      type: 'Feature' as const,
++      geometry: { type: 'Point' as const, coordinates: [e.longitude, e.latitude] },
++      properties: {
++        id: e.id,
++        weight: severityWeight(e.severity),
++        severity: e.severity,
++        color: severityColor(e.severity),
++      },
++    })),
++  }
++}
++
++
+ /**
+- * Vista 3D tipo "Google Earth": satélite + modelo digital del terreno
+- * (MapLibre GL + proyección globo). Sin API key.
++ * Vista 3D tipo "Google Earth": satélite + relieve real (DEM) + edificios 3D
++ * OpenStreetMap + mapa de calor de eventos. Sin API key.
+  */
+-export default function Map3D({ events, selectedEvent, onSelectEvent }: Map3DProps) {
++export default function Map3D({
++  events,
++  selectedEvent,
++  onSelectEvent,
++  heatmap = false,
++  buildings = false,
++  showLabels = true,
++}: Map3DProps) {
+   const containerRef = useRef<HTMLDivElement>(null)
+   const mapRef = useRef<maplibregl.Map | null>(null)
+-  const markersRef = useRef<maplibregl.Marker[]>([])
+   const fittedRef = useRef(false)
++  const loadedRef = useRef(false)
++
++  // opciones vivas para usar dentro de callbacks de map.on('load')
++  const optsRef = useRef({ heatmap, buildings, showLabels })
++  optsRef.current = { heatmap, buildings, showLabels }
+ 
+   /* ---------------- init ---------------- */
+   useEffect(() => {
+@@ -54,6 +82,7 @@ export default function Map3D({ events, selectedEvent, onSelectEvent }: Map3DPro
+       container: containerRef.current,
+       style: {
+         version: 8,
++        glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+         sources: {
+           satelite: {
+             type: 'raster',
+@@ -73,6 +102,22 @@ export default function Map3D({ events, selectedEvent, onSelectEvent }: Map3DPro
+             tileSize: 256,
+             maxzoom: 13,
+           },
++          // Vector tiles gratuitos (OpenFreeMap / OpenMapTiles) para edificios y topónimos
++          osm: {
++            type: 'vector',
++            url: 'https://tiles.openfreemap.org/planet',
++          },
++          eventos: {
++            type: 'geojson',
++            data: { type: 'FeatureCollection', features: [] } as any,
++          },
++          eventosCluster: {
++            type: 'geojson',
++            data: { type: 'FeatureCollection', features: [] } as any,
++            cluster: true,
++            clusterRadius: 46,
++            clusterMaxZoom: 6,
++          },
+         },
+         layers: [
+           { id: 'fondo', type: 'background', paint: { 'background-color': '#0b131d' } },
+@@ -80,14 +125,151 @@ export default function Map3D({ events, selectedEvent, onSelectEvent }: Map3DPro
+             id: 'satelite',
+             type: 'raster',
+             source: 'satelite',
+-            paint: { 'raster-brightness-max': 0.92, 'raster-saturation': 0.12, 'raster-contrast': 0.05 },
++            paint: {
++              'raster-brightness-max': 0.92,
++              'raster-saturation': 0.12,
++              'raster-contrast': 0.05,
++            },
++          },
++          {
++            id: 'edificios',
++            type: 'fill-extrusion',
++            source: 'osm',
++            'source-layer': 'building',
++            minzoom: 13,
++            filter: ['!=', ['get', 'hide_3d'], true],
++            layout: { visibility: 'none' },
++            paint: {
++              'fill-extrusion-color': [
++                'interpolate',
++                ['linear'],
++                ['coalesce', ['get', 'render_height'], 12],
++                0, '#1d3448',
++                25, '#28516b',
++                80, '#2f7091',
++                200, '#3c93b3',
++              ],
++              'fill-extrusion-height': [
++                'coalesce',
++                ['get', 'render_height'],
++                ['*', ['coalesce', ['get', 'building:levels'], 3], 3],
++              ],
++              'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
++              'fill-extrusion-opacity': 0.88,
++              'fill-extrusion-vertical-gradient': true,
++            },
++          } as any,
++          {
++            id: 'calor',
++            type: 'heatmap',
++            source: 'eventos',
++            maxzoom: 12,
++            layout: { visibility: 'none' },
++            paint: {
++              'heatmap-weight': ['get', 'weight'],
++              'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 0, 1.6, 4, 2.1, 8, 2.6, 12, 3.0],
++              'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 0, 26, 4, 38, 8, 54, 12, 74],
++              'heatmap-opacity': 0.9,
++              'heatmap-color': [
++                'interpolate',
++                ['linear'],
++                ['heatmap-density'],
++                0, 'rgba(8,20,32,0)',
++                0.2, 'rgba(14,165,233,0.55)',
++                0.42, 'rgba(56,189,248,0.75)',
++                0.6, 'rgba(251,191,36,0.85)',
++                0.78, 'rgba(251,146,60,0.9)',
++                1, 'rgba(248,113,113,0.95)',
++              ],
++            },
+           },
++          {
++            id: 'clusters-halo',
++            type: 'circle',
++            source: 'eventosCluster',
++            filter: ['has', 'point_count'],
++            paint: {
++              'circle-color': '#38bdf8',
++              'circle-opacity': 0.16,
++              'circle-radius': ['interpolate', ['linear'], ['get', 'point_count'], 2, 22, 20, 34, 100, 52],
++            },
++          } as any,
++          {
++            id: 'clusters',
++            type: 'circle',
++            source: 'eventosCluster',
++            filter: ['has', 'point_count'],
++            paint: {
++              'circle-color': '#22d3ee',
++              'circle-radius': ['interpolate', ['linear'], ['get', 'point_count'], 2, 13, 20, 18, 100, 24],
++              'circle-stroke-color': 'rgba(255,255,255,.85)',
++              'circle-stroke-width': 1.4,
++              'circle-opacity': 0.95,
++            },
++          } as any,
++          {
++            id: 'clusters-count',
++            type: 'symbol',
++            source: 'eventosCluster',
++            filter: ['has', 'point_count'],
++            layout: {
++              'text-field': ['get', 'point_count_abbreviated'] as any,
++              'text-font': ['Open Sans Semibold'],
++              'text-size': 12,
++              'text-allow-overlap': true,
++            },
++            paint: { 'text-color': '#062630' },
++          } as any,
++          {
++            id: 'eventos-glow',
++            type: 'circle',
++            source: 'eventosCluster',
++            filter: ['!', ['has', 'point_count']],
++            paint: {
++              'circle-color': ['get', 'color'],
++              'circle-opacity': 0.18,
++              'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, 10, 6, 16, 10, 22],
++            },
++          } as any,
++          {
++            id: 'eventos-punto',
++            type: 'circle',
++            source: 'eventosCluster',
++            filter: ['!', ['has', 'point_count']],
++            paint: {
++              'circle-color': ['get', 'color'],
++              'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, 4, 6, 6, 10, 8],
++              'circle-stroke-color': 'rgba(255,255,255,.9)',
++              'circle-stroke-width': 1.2,
++            },
++          } as any,
++          {
++            id: 'etiquetas-lugar',
++            type: 'symbol',
++            source: 'osm',
++            'source-layer': 'place',
++            minzoom: 5,
++            filter: ['match', ['get', 'class'], ['city', 'town'], true, false],
++            layout: {
++              'text-field': ['coalesce', ['get', 'name:latin'], ['get', 'name']] as any,
++              'text-font': ['Noto Sans Regular'],
++              'text-size': ['interpolate', ['linear'], ['zoom'], 5, 10, 9, 13, 14, 16],
++              'text-allow-overlap': false,
++              'text-ignore-placement': false,
++              visibility: 'none',
++            },
++            paint: {
++              'text-color': '#cfe3f7',
++              'text-halo-color': 'rgba(6,14,22,0.95)',
++              'text-halo-width': 1.4,
++            },
++          } as any,
+         ],
+       } as any,
+-      center: [8, 22],
+-      zoom: 1.7,
+-      pitch: 52,
+-      bearing: -14,
++      center: [10, 12],
++      zoom: 2.15,
++      pitch: 38,
++      bearing: -12,
+       maxPitch: 85,
+       attributionControl: false,
+       dragRotate: true,
+@@ -95,7 +277,14 @@ export default function Map3D({ events, selectedEvent, onSelectEvent }: Map3DPro
+ 
+     mapRef.current = map
+ 
++    // El canvas debe seguir al contenedor (paneles que cambian de tamaño)
++    const ro = new ResizeObserver(() => map.resize())
++    ro.observe(containerRef.current)
++
+     map.on('load', () => {
++      loadedRef.current = true
++      if (import.meta.env.DEV) (window as any).__a360Map3D = map // depuración en dev
++
+       // Proyección globo (se comporta como Google Earth)
+       try {
+         ;(map as any).setProjection?.({ type: 'globe' })
+@@ -103,37 +292,75 @@ export default function Map3D({ events, selectedEvent, onSelectEvent }: Map3DPro
+         /* versiones sin soporte: sigue en mercator */
+       }
+ 
+-      // Terreno 3D (puede fallar si el DEM no responde: se ignora)
++      // Terreno 3D (si el DEM no responde, se ignora)
+       try {
+         map.setTerrain({ source: 'terreno', exaggeration: 1.25 } as any)
+       } catch (e) {
+         console.warn('[Map3D] terreno no disponible', e)
+       }
+ 
+-      // Cielo / horizonte
+-      try {
+-        map.addLayer({
+-          id: 'cielo',
+-          type: 'sky',
+-          paint: {
+-            'sky-color': '#0a1a2b',
+-            'sky-horizon-blend': 0.7,
+-            'horizon-color': '#12314f',
+-            'horizon-fog-blend': 0.55,
+-            'fog-color': '#0b131d',
+-            'fog-ground-blend': 0.35,
+-          },
+-        } as any)
+-      } catch {
+-        /* opcional */
++      // Estado inicial de las capas opcionales
++      const apply = (id: string, on: boolean) => {
++        try {
++          map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none')
++        } catch {
++          /* capa ausente */
++        }
+       }
++      // Click: cluster → acercarse · evento → seleccionar
++      map.on('click', (e: any) => {
++        const feats = map.queryRenderedFeatures(e.point, {
++          layers: ['clusters', 'eventos-punto'],
++        })
++        if (!feats.length) return
++        const f: any = feats[0]
++
++        if (f.properties?.point_count) {
++          const center = (f.geometry as any).coordinates
++          let done = false
++
++          const go = (zoom: number | null | undefined) => {
++            if (done) return
++            done = true
++            map.easeTo({
++              center,
++              zoom: Math.min(zoom ?? map.getZoom() + 2, 12),
++              duration: 750,
++            })
++          }
++
++          // zoom exacto en el que el grupo se descompone (si la API responde)
++          try {
++            const src = map.getSource('eventosCluster') as any
++            src?.getClusterExpansionZoom?.(f.properties.cluster_id, (err: any, zoom: number) => {
++              if (!err && typeof zoom === 'number') go(zoom)
++            })
++          } catch {
++            /* sin soporte: se usa la heurística de abajo */
++          }
++
++          // respaldo por tamaño del grupo
++          const count = f.properties.point_count as number
++          const step = count >= 50 ? 2.6 : count >= 10 ? 2.2 : 1.8
++          window.setTimeout(() => go(map.getZoom() + step), 420)
++          return
++        }
++
++        const id = f.properties?.id
++        const ev = events.find((x) => x.id === id)
++        if (ev) onSelectEvent(ev)
++      })
++
++      apply('calor', optsRef.current.heatmap)
++      apply('edificios', optsRef.current.buildings)
++      apply('etiquetas-lugar', optsRef.current.showLabels)
+     })
+ 
+     return () => {
+-      markersRef.current.forEach((m) => m.remove())
+-      markersRef.current = []
++      ro.disconnect()
+       map.remove()
+       mapRef.current = null
++      loadedRef.current = false
+     }
+   }, [])
+ 
+@@ -146,7 +373,7 @@ export default function Map3D({ events, selectedEvent, onSelectEvent }: Map3DPro
+       const bounds = new maplibregl.LngLatBounds()
+       events.forEach((e) => bounds.extend([e.longitude, e.latitude]))
+       if (!bounds.isEmpty()) {
+-        map.fitBounds(bounds, { padding: 90, maxZoom: 3.2, pitch: 55, duration: 900 })
++        map.fitBounds(bounds, { padding: 40, maxZoom: 2.8, pitch: 38, duration: 900 })
+         fittedRef.current = true
+       }
+     }
+@@ -155,32 +382,74 @@ export default function Map3D({ events, selectedEvent, onSelectEvent }: Map3DPro
+     else map.once('load', fit)
+   }, [events])
+ 
+-  /* ---------------- marcadores ---------------- */
++  /* ---------------- datos del mapa de calor + marcadores ---------------- */
+   useEffect(() => {
+     const map = mapRef.current
+     if (!map) return
+ 
+     const draw = () => {
+-      markersRef.current.forEach((m) => m.remove())
+-      markersRef.current = []
+-
+-      events.slice(0, 500).forEach((ev) => {
+-        const el = markerElement(ev, selectedEvent?.id === ev.id)
+-        el.addEventListener('click', (e) => {
+-          e.stopPropagation()
+-          onSelectEvent(ev)
+-        })
+-        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+-          .setLngLat([ev.longitude, ev.latitude])
+-          .addTo(map)
+-        markersRef.current.push(marker)
+-      })
++      const geo = toGeoJSON(events) as any
++      ;(map.getSource('eventos') as maplibregl.GeoJSONSource | undefined)?.setData(geo)
++      ;(map.getSource('eventosCluster') as maplibregl.GeoJSONSource | undefined)?.setData(geo)
+     }
+ 
+     if (map.loaded()) draw()
+     else map.once('load', draw)
+   }, [events, selectedEvent, onSelectEvent])
+ 
++  /* ---------------- toggles ---------------- */
++  useEffect(() => {
++    const map = mapRef.current
++    if (!map || !loadedRef.current) return
++    try {
++      map.setLayoutProperty('calor', 'visibility', heatmap ? 'visible' : 'none')
++    } catch {
++      /* capa aún no lista */
++    }
++    // con calor activo, los puntos bajan de opacidad para no saturar
++    try {
++      map.setPaintProperty('eventos-punto', 'circle-opacity', heatmap ? 0.35 : 1)
++      map.setPaintProperty('eventos-glow', 'circle-opacity', heatmap ? 0.08 : 0.18)
++      map.setPaintProperty('clusters', 'circle-opacity', heatmap ? 0.45 : 0.95)
++    } catch {
++      /* capas aún no listas */
++    }
++  }, [heatmap])
++
++  useEffect(() => {
++    const map = mapRef.current
++    if (!map || !loadedRef.current) return
++    try {
++      map.setLayoutProperty('edificios', 'visibility', buildings ? 'visible' : 'none')
++    } catch {
++      /* capa aún no lista */
++    }
++  }, [buildings])
++
++  useEffect(() => {
++    const map = mapRef.current
++    if (!map || !loadedRef.current) return
++    try {
++      map.setLayoutProperty('etiquetas-lugar', 'visibility', showLabels ? 'visible' : 'none')
++    } catch {
++      /* capa aún no lista */
++    }
++  }, [showLabels])
++
++  /* ---------------- al activar edificios, volar a una ciudad ---------------- */
++  useEffect(() => {
++    const map = mapRef.current
++    if (!map || !buildings || !loadedRef.current) return
++    if (map.getZoom() >= 12) return
++
++    const center: [number, number] = selectedEvent
++      ? [selectedEvent.longitude, selectedEvent.latitude]
++      : [-74.0721, 4.711] // Bogotá por defecto
++
++    map.flyTo({ center, zoom: 15, pitch: 62, bearing: 18, duration: 2400, essential: true })
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [buildings])
++
+   /* ---------------- volar al evento seleccionado ---------------- */
+   useEffect(() => {
+     const map = mapRef.current
+@@ -200,19 +469,21 @@ export default function Map3D({ events, selectedEvent, onSelectEvent }: Map3DPro
+     const map = mapRef.current
+     if (!map) return
+     if (events.length === 0) {
+-      map.easeTo({ center: [8, 22], zoom: 1.7, pitch: 52, bearing: -14, duration: 700 })
++      map.easeTo({ center: [10, 12], zoom: 2.15, pitch: 38, bearing: -12, duration: 700 })
+       return
+     }
+     const bounds = new maplibregl.LngLatBounds()
+     events.forEach((e) => bounds.extend([e.longitude, e.latitude]))
+-    map.fitBounds(bounds, { padding: 90, maxZoom: 3.2, pitch: 52, bearing: -14, duration: 800 })
++    map.fitBounds(bounds, { padding: 40, maxZoom: 2.8, pitch: 38, bearing: -12, duration: 800 })
+   }
+ 
+   return (
+-    <div className="relative w-full h-full">
+-      <div ref={containerRef} className="absolute inset-0" />
++    <div className="relative w-full h-full bg-[#05080e] overflow-hidden">
++      {/* “espacio” de fondo: el globo deja ver el cielo en la parte superior */}
++      <div aria-hidden className="absolute inset-0 a360-space" />
++      <div ref={containerRef} className="relative w-full h-full min-h-[300px]" />
+ 
+-      {/* Zoom + brújula */}
++      {/* Zoom */}
+       <div className="absolute top-4 left-4 z-30 flex flex-col rounded-xl overflow-hidden
+                       bg-[#0e1a26]/85 backdrop-blur-md border border-white/10
+                       shadow-[0_10px_30px_-10px_rgba(0,0,0,.8)]">
+@@ -236,8 +507,8 @@ export default function Map3D({ events, selectedEvent, onSelectEvent }: Map3DPro
+         <Compass className="w-4 h-4" />
+       </button>
+ 
+-      <div className="absolute bottom-2 right-3 z-20 text-[9px] text-slate-400/70 pointer-events-none">
+-        © Esri · Terreno: AWS Terrain Tiles · MapLibre
++      <div className="a360-attrib absolute bottom-2 right-3 z-20 text-[9px] text-slate-400/70 pointer-events-none">
++        © Esri · Edificios: OpenFreeMap / OpenStreetMap · Terreno: AWS · MapLibre
+       </div>
+     </div>
+   )
+diff --git a/src/data/demoEvents.ts b/src/data/demoEvents.ts
+index c9bb852..4394d72 100644
+--- a/src/data/demoEvents.ts
++++ b/src/data/demoEvents.ts
+@@ -82,7 +82,8 @@ export function buildDemoEvents(total = 178): DisasterEvent[] {
+ 
+       const lat = cluster.lat + (r() - 0.5) * cluster.spread * 2
+       const lng = cluster.lng + (r() - 0.5) * cluster.spread * 2 * 1.6
+-      const minutesAgo = Math.round(r() * 60 * 23) + 3
++      // repartidos en las últimas 24 h para que la línea de tiempo muestre actividad
++      const minutesAgo = Math.round(r() * 60 * 23.5) + 5
+       const detected = new Date(now - minutesAgo * 60_000)
+ 
+       events.push({
+diff --git a/src/index.css b/src/index.css
+index 4b36027..4994b84 100644
+--- a/src/index.css
++++ b/src/index.css
+@@ -116,10 +116,20 @@ body {
+   user-select: none;
+ }
+ 
+-/* Tinte azulado de los tiles para integrarlos con la UI */
+-.leaflet-tile-pane {
++/* Tinte por estilo de mapa (los tiles crudos no combinan con la UI) */
++[data-basemap="dark"] .leaflet-tile-pane {
+   filter: brightness(0.66) saturate(0.5) hue-rotate(178deg) contrast(1.08);
+ }
++[data-basemap="sat"] .leaflet-tile-pane {
++  filter: brightness(0.92) saturate(1.05) contrast(1.02);
++}
++/* Los mapas claros (topo/relieve) se invierten para volverlos "dark mode" */
++[data-basemap="topo"] .leaflet-tile-pane {
++  filter: invert(0.9) hue-rotate(185deg) brightness(0.92) saturate(0.55) contrast(1.02);
++}
++[data-basemap="relief"] .leaflet-tile-pane {
++  filter: invert(0.88) hue-rotate(188deg) brightness(0.9) saturate(0.45) contrast(1.05);
++}
+ 
+ .leaflet-popup-content-wrapper {
+   border-radius: 14px;
+@@ -268,24 +278,47 @@ body {
+   to { opacity: 1; transform: translateY(0); }
+ }
+ 
+-/* Marcadores HUD para Map3D (MapLibre GL) */
++/* Reduced motion */
++@media (prefers-reduced-motion: reduce) {
++  .a360-halo, .a360-ring, .marker-pulse, .stagger > * { animation: none !important; }
++}
++
++
++/* ---------- MapLibre (vista 3D) ---------- */
++.maplibregl-map {
++  font-family: 'Inter', system-ui, sans-serif;
++  background: #0b131d;
++}
++
++.maplibregl-canvas {
++  outline: none;
++}
++
++/* Ocultamos controles y atribución por defecto: usamos los propios */
++.maplibregl-ctrl-attrib,
++.maplibregl-ctrl-bottom-left,
++.maplibregl-ctrl-bottom-right,
++.maplibregl-ctrl-top-right,
++.maplibregl-ctrl-top-left {
++  display: none !important;
++}
++
++/* Marcadores HUD sobre la vista 3D */
+ .a360-gl-marker {
+   position: relative;
+   display: grid;
+   place-items: center;
+-  width: 100%;
+-  height: 100%;
+   cursor: pointer;
+ }
+ 
+ .a360-gl-halo {
+   position: absolute;
+-  inset: -50%;
++  inset: -60%;
+   border-radius: 999px;
+   background: radial-gradient(closest-side, var(--c) 0%, transparent 70%);
+-  opacity: 0.4;
+-  filter: blur(2px);
+-  animation: a360Breathe 3s ease-in-out infinite;
++  opacity: 0.45;
++  animation: a360Breathe 3.2s ease-in-out infinite;
++  pointer-events: none;
+ }
+ 
+ .a360-gl-dot {
+@@ -294,15 +327,60 @@ body {
+   height: 100%;
+   border-radius: 999px;
+   background: var(--c);
++  border: 1.5px solid rgba(255, 255, 255, 0.85);
++  box-shadow:
++    0 0 8px var(--c),
++    0 0 18px var(--c),
++    0 0 30px rgba(56, 189, 248, 0.4);
++}
++
++/* Fondo tipo espacio para la vista 3D (detrás del globo) */
++.a360-space {
++  background-color: #05080e;
++  background-image:
++    radial-gradient(1px 1px at 12% 18%, rgba(255,255,255,.55), transparent 60%),
++    radial-gradient(1px 1px at 28% 42%, rgba(255,255,255,.35), transparent 60%),
++    radial-gradient(1.4px 1.4px at 41% 12%, rgba(190,225,255,.55), transparent 60%),
++    radial-gradient(1px 1px at 57% 30%, rgba(255,255,255,.30), transparent 60%),
++    radial-gradient(1.2px 1.2px at 68% 8%,  rgba(255,255,255,.45), transparent 60%),
++    radial-gradient(1px 1px at 79% 24%, rgba(190,225,255,.40), transparent 60%),
++    radial-gradient(1.3px 1.3px at 88% 14%, rgba(255,255,255,.50), transparent 60%),
++    radial-gradient(1px 1px at 94% 36%, rgba(255,255,255,.30), transparent 60%),
++    radial-gradient(900px 520px at 50% 0%, rgba(30,80,140,.28), transparent 70%);
++}
++
++/* ---------- Burbujas de agrupación (2D) ---------- */
++.a360-bubble {
++  display: grid;
++  place-items: center;
++  border-radius: 999px;
++  font-size: 11px;
++  font-weight: 700;
++  color: #04222b;
++  background:
++    radial-gradient(circle at 35% 30%, rgba(255,255,255,.95), var(--c) 62%);
++  border: 1.5px solid rgba(255,255,255,.85);
+   box-shadow:
+-    0 0 6px var(--c),
+     0 0 12px var(--c),
+-    0 0 20px rgba(56, 189, 248, 0.4);
+-  border: 1.5px solid rgba(255, 255, 255, 0.85);
++    0 0 26px color-mix(in srgb, var(--c) 55%, transparent);
++  transition: transform .15s ease;
+ }
+ 
+-/* Reduced motion */
+-@media (prefers-reduced-motion: reduce) {
+-  .a360-halo, .a360-ring, .marker-pulse, .stagger > *,
+-  .a360-gl-halo, .a360-gl-dot { animation: none !important; }
++.a360-bubble:hover {
++  transform: scale(1.08);
++}
++
++.a360-bubble span {
++  transform: translateY(.5px);
++  letter-spacing: -0.02em;
++}
++
++/* ---------- Atribuciones por encima de la línea de tiempo ---------- */
++[data-timeline='true'] .leaflet-bottom.leaflet-left,
++[data-timeline='true'] .leaflet-bottom.leaflet-right,
++[data-timeline='true'] .maplibregl-ctrl-bottom-left,
++[data-timeline='true'] .maplibregl-ctrl-bottom-right,
++[data-timeline='true'] .a360-attrib {
++  bottom: 92px !important;
++  transition: bottom .3s ease;
+ }
+diff --git a/src/types/leaflet-heat.d.ts b/src/types/leaflet-heat.d.ts
+new file mode 100644
+index 0000000..389f070
+--- /dev/null
++++ b/src/types/leaflet-heat.d.ts
+@@ -0,0 +1 @@
++declare module 'leaflet.heat'

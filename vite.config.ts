@@ -13,6 +13,9 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api/, '/api'),
       },
     },
+    watch: {
+      ignored: ['**/alerta360-ui-redesign/**', '**/*.patch'],
+    },
   },
   build: {
     outDir: 'dist',
