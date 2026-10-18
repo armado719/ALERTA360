@@ -1,0 +1,20 @@
+# Alertmanager — enruta las alertas de Prometheus a un webhook (Slack, Discord,
+# Telegram o cualquier endpoint HTTP). El destino se define con ALERT_WEBHOOK_URL.
+route:
+  receiver: webhook
+  group_by: ['alertname', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: webhook
+    webhook_configs:
+      - url: '${ALERT_WEBHOOK_URL}'
+        send_resolved: true
+
+inhibit_rules:
+  # Si el backend está caído, no hace falta avisar además de la ingesta parada.
+  - source_matchers: ['alertname="BackendDown"']
+    target_matchers: ['alertname=~"Ingesta.*|Backend.*"']
+    equal: []

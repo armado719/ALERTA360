@@ -1,7 +1,10 @@
 import axios from 'axios'
 import { DisasterEvent } from '../types'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+// Por defecto se usa una ruta relativa: en desarrollo la resuelve el proxy de
+// Vite (vite.config.ts) y en producción nginx. Así no hay CORS de por medio.
+// Para apuntar a otro backend: VITE_API_URL=https://api.ejemplo.com/api
+const API_BASE = import.meta.env.VITE_API_URL || '/api'
 
 // Create axios instance
 const api = axios.create({
@@ -123,4 +126,73 @@ export async function deleteLocation(id: string): Promise<void> {
 // Alerts
 export async function subscribeToAlerts(locationId: string): Promise<void> {
   await api.post('/notifications/subscribe', { locationId })
+}
+
+// ============================================================================
+// Alertas (motor de matching del backend)
+// ============================================================================
+
+export type AlertChannel = 'push' | 'email' | 'sms'
+
+export interface NotificationEvent {
+  id: string
+  type: string
+  title: string
+  severity: 'low' | 'medium' | 'high' | 'critical'
+  latitude: number
+  longitude: number
+  occurredAt: string
+  source: string
+}
+
+export interface ServerNotification {
+  id: string
+  channel: AlertChannel
+  status: string
+  distanceKm: number
+  sentAt: string
+  readAt: string | null
+  event: NotificationEvent
+}
+
+export interface AlertsPage {
+  notifications: ServerNotification[]
+  unread: number
+}
+
+export async function fetchNotifications(limit = 50): Promise<AlertsPage> {
+  const response = await api.get('/notifications', { params: { limit } })
+  return response.data
+}
+
+export async function fetchUnreadCount(): Promise<number> {
+  const response = await api.get('/notifications/unread-count')
+  return response.data.count ?? 0
+}
+
+export async function markNotificationRead(id: string): Promise<void> {
+  await api.post(`/notifications/${id}/read`)
+}
+
+export async function markAllNotificationsRead(): Promise<number> {
+  const response = await api.post('/notifications/read-all')
+  return response.data.updated ?? 0
+}
+
+export async function deleteNotification(id: string): Promise<void> {
+  await api.delete(`/notifications/${id}`)
+}
+
+/**
+ * URL del WebSocket de alertas en vivo.
+ * `http://host/api` → `ws://host/ws/alerts?token=…`
+ */
+export function alertsSocketUrl(): string | null {
+  if (!authToken) return null
+
+  // Funciona con base absoluta (http://localhost:3000/api) o relativa (/api)
+  const apiUrl = new URL(API_BASE, window.location.origin)
+  const base = apiUrl.pathname.replace(/\/api\/?$/, '')
+  const protocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${apiUrl.host}${base}/ws/alerts?token=${encodeURIComponent(authToken)}`
 }

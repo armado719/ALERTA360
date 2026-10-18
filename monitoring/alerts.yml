@@ -1,0 +1,97 @@
+groups:
+  - name: alerta360-disponibilidad
+    interval: 30s
+    rules:
+      - alert: BackendDown
+        expr: up{job="alerta360-backend"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: alerta360
+        annotations:
+          summary: 'API de ALERTA360 caída'
+          description: 'Prometheus no puede raspar {{ $labels.instance }} desde hace 2 minutos.'
+
+      - alert: BackendErrorRate
+        expr: |
+          sum(rate(alerta360_http_requests_total{status=~"5.."}[5m]))
+            /
+          clamp_min(sum(rate(alerta360_http_requests_total[5m])), 0.001)
+            > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          team: alerta360
+        annotations:
+          summary: 'Más del 5 % de las peticiones devuelven 5xx'
+          description: 'Tasa de errores actual: {{ $value | humanizePercentage }}.'
+
+      - alert: BackendLatenciaAlta
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(alerta360_http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+          team: alerta360
+        annotations:
+          summary: 'p95 de la API por encima de 1 s'
+          description: 'p95 actual: {{ $value | humanizeDuration }}.'
+
+  - name: alerta360-ingesta
+    interval: 30s
+    rules:
+      - alert: IngestaIngestaDetenida
+        expr: (time() - alerta360_ingestion_last_success_timestamp_seconds) > 900
+        for: 5m
+        labels:
+          severity: critical
+          team: alerta360
+        annotations:
+          summary: 'La ingesta de USGS/NOAA lleva más de 15 minutos sin completarse'
+          description: 'Última ingesta correcta hace {{ $value | humanizeDuration }}.'
+
+      - alert: IngestaSinEventosNuevos
+        expr: increase(alerta360_ingestion_events_total[3h]) == 0
+        for: 10m
+        labels:
+          severity: warning
+          team: alerta360
+        annotations:
+          summary: 'Tres horas sin eventos nuevos de ninguna fuente'
+          description: 'Puede ser normal en calma sísmica, pero revisa los logs de ingesta.'
+
+      - alert: IngestaConErrores
+        expr: increase(alerta360_ingestion_errors_total[15m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: alerta360
+        annotations:
+          summary: 'Errores repetidos al insertar eventos'
+          description: '{{ $value }} errores de inserción en los últimos 15 minutos.'
+
+  - name: alerta360-recursos
+    interval: 60s
+    rules:
+      - alert: MemoriaAlta
+        expr: alerta360_process_resident_memory_bytes > 512 * 1024 * 1024
+        for: 10m
+        labels:
+          severity: warning
+          team: alerta360
+        annotations:
+          summary: 'El backend usa más de 512 MB de RAM'
+          description: 'RSS actual: {{ $value | humanize1024 }}B.'
+
+      - alert: DemasiadasConexionesHTTP
+        expr: sum(rate(alerta360_http_requests_total[1m])) > 200
+        for: 5m
+        labels:
+          severity: warning
+          team: alerta360
+        annotations:
+          summary: 'Volumen de peticiones inusualmente alto'
+          description: '{{ $value }} peticiones/s; revisa si hay abuso o un bucle.'

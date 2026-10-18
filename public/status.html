@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ALERTA360 · Estado del servicio</title>
+    <meta name="robots" content="noindex" />
+    <style>
+      :root {
+        --bg: #0b131d;
+        --surface: #0d1621;
+        --surface2: #16212e;
+        --border: rgba(255, 255, 255, 0.08);
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --accent: #22d3ee;
+        --ok: #34d399;
+        --warn: #fbbf24;
+        --bad: #f87171;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(1200px 600px at 15% -10%, rgba(34, 211, 238, 0.12), transparent 60%),
+          radial-gradient(900px 500px at 100% 0%, rgba(56, 189, 248, 0.08), transparent 55%),
+          var(--bg);
+        color: var(--text);
+        font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 48px 20px 40px;
+      }
+      header { width: 100%; max-width: 860px; display: flex; align-items: center; gap: 12px; }
+      .logo {
+        width: 38px; height: 38px; border-radius: 11px;
+        background: linear-gradient(135deg, #22d3ee, #6366f1);
+        display: grid; place-items: center; font-weight: 800; color: #04222b; font-size: 15px;
+        box-shadow: 0 0 24px rgba(34, 211, 238, 0.35);
+      }
+      h1 { font-size: 19px; margin: 0; letter-spacing: -0.01em; }
+      header p { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+
+      main { width: 100%; max-width: 860px; margin-top: 26px; }
+
+      .banner {
+        display: flex; align-items: center; gap: 14px;
+        padding: 20px 22px; border-radius: 16px;
+        background: var(--surface); border: 1px solid var(--border);
+        box-shadow: 0 24px 60px -30px rgba(0, 0, 0, 0.9);
+        transition: border-color 0.3s ease;
+      }
+      .dot {
+        width: 12px; height: 12px; border-radius: 50%;
+        background: var(--muted);
+        box-shadow: 0 0 0 0 rgba(148, 163, 184, 0.5);
+      }
+      .dot.ok { background: var(--ok); box-shadow: 0 0 14px rgba(52, 211, 153, 0.8); }
+      .dot.warn { background: var(--warn); box-shadow: 0 0 14px rgba(251, 191, 36, 0.8); }
+      .dot.bad { background: var(--bad); box-shadow: 0 0 14px rgba(248, 113, 113, 0.8); }
+      .banner strong { font-size: 17px; display: block; letter-spacing: -0.01em; }
+      .banner span { color: var(--muted); font-size: 13px; }
+
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-top: 14px; }
+      .card {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: 14px; padding: 16px 18px;
+      }
+      .card h2 {
+        margin: 0 0 9px; font-size: 10.5px; letter-spacing: 0.14em;
+        text-transform: uppercase; color: var(--muted); font-weight: 700;
+      }
+      .card .value { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+      .card .hint { color: var(--muted); font-size: 12px; margin-top: 4px; }
+      .value.ok { color: var(--ok); }
+      .value.warn { color: var(--warn); }
+      .value.bad { color: var(--bad); }
+
+      footer {
+        width: 100%; max-width: 860px; margin-top: 22px;
+        display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+        color: var(--muted); font-size: 12px;
+      }
+      a { color: var(--accent); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .pulse { animation: pulse 2.4s ease-in-out infinite; }
+      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+      @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="logo">A360</div>
+      <div>
+        <h1>ALERTA360 · Estado del servicio</h1>
+        <p>Monitoreo en vivo de la API, la base de datos y la ingesta de datos.</p>
+      </div>
+    </header>
+
+    <main>
+      <section class="banner" id="banner" aria-live="polite">
+        <span class="dot pulse" id="dot"></span>
+        <div>
+          <strong id="banner-title">Comprobando…</strong>
+          <span id="banner-sub">Consultando /health</span>
+        </div>
+      </section>
+
+      <section class="grid">
+        <div class="card">
+          <h2>API</h2>
+          <div class="value" id="api-value">—</div>
+          <div class="hint" id="api-hint">latencia de la última comprobación</div>
+        </div>
+        <div class="card">
+          <h2>Base de datos</h2>
+          <div class="value" id="db-value">—</div>
+          <div class="hint" id="db-hint">PostgreSQL 16</div>
+        </div>
+        <div class="card">
+          <h2>Última ingesta</h2>
+          <div class="value" id="ing-value">—</div>
+          <div class="hint" id="ing-hint">USGS + NOAA cada 5 min</div>
+        </div>
+        <div class="card">
+          <h2>Tiempo en marcha</h2>
+          <div class="value" id="up-value">—</div>
+          <div class="hint">desde el último despliegue</div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>Actualizado hace <b id="age">—</b> · se refresca cada 30 s</span>
+      <span><a href="/">Volver a la plataforma</a></span>
+    </footer>
+
+    <script>
+      const $ = (id) => document.getElementById(id)
+      let lastCheck = null
+
+      const fmtDuration = (seconds) => {
+        if (seconds == null) return '—'
+        if (seconds < 60) return Math.round(seconds) + ' s'
+        if (seconds < 3600) return Math.round(seconds / 60) + ' min'
+        if (seconds < 86400) return (seconds / 3600).toFixed(1) + ' h'
+        return Math.round(seconds / 86400) + ' d'
+      }
+
+      const setValue = (id, text, kind) => {
+        const el = $(id)
+        el.textContent = text
+        el.className = 'value' + (kind ? ' ' + kind : '')
+      }
+
+      const setBanner = (kind, title, sub) => {
+        $('dot').className = 'dot ' + kind + (kind === 'ok' ? ' pulse' : '')
+        $('banner-title').textContent = title
+        $('banner-sub').textContent = sub
+      }
+
+      async function check() {
+        const started = performance.now()
+        try {
+          const res = await fetch('/health', { cache: 'no-store' })
+          const latency = Math.round(performance.now() - started)
+          const data = await res.json().catch(() => ({}))
+
+          const db = data?.checks?.database?.status === 'up'
+          const ing = data?.checks?.ingestion ?? {}
+          const stale = ing.status === 'stale'
+          const degraded = !res.ok || !db
+
+          if (degraded) {
+            setBanner('bad', 'Servicio degradado', db ? 'La API responde con errores' : 'Base de datos no disponible')
+          } else if (stale) {
+            setBanner('warn', 'Servicio operativo con retraso', 'La ingesta lleva más de 15 minutos sin completarse')
+          } else {
+            setBanner('ok', 'Todos los sistemas operativos', 'API y base de datos respondiendo con normalidad')
+          }
+
+          setValue('api-value', res.ok ? 'Operativa' : 'Con errores', degraded ? 'bad' : 'ok')
+          $('api-hint').textContent = 'respuesta en ' + latency + ' ms'
+
+          setValue('db-value', db ? 'Conectada' : 'Sin conexión', db ? 'ok' : 'bad')
+          $('db-hint').textContent = data?.checks?.database?.latencyMs != null
+            ? data.checks.database.latencyMs + ' ms de latencia'
+            : 'PostgreSQL 16'
+
+          setValue('ing-value', ing.ageSeconds == null ? 'Sin datos' : 'hace ' + fmtDuration(ing.ageSeconds), stale ? 'warn' : ing.ageSeconds == null ? '' : 'ok')
+          $('ing-hint').textContent = stale
+            ? 'revisa los logs del backend'
+            : 'USGS + NOAA cada 5 min'
+
+          setValue('up-value', fmtDuration(data?.uptimeSeconds), '')
+          lastCheck = Date.now()
+          tick()
+        } catch (err) {
+          setBanner('bad', 'Sin conexión con el servicio', 'No se pudo alcanzar /health')
+          setValue('api-value', 'Caída', 'bad')
+          setValue('db-value', 'Desconocida', '')
+          setValue('ing-value', 'Desconocida', '')
+          setValue('up-value', '—', '')
+          lastCheck = Date.now()
+        }
+      }
+
+      function tick() {
+        if (!lastCheck) return
+        $('age').textContent = fmtDuration((Date.now() - lastCheck) / 1000)
+      }
+
+      check()
+      setInterval(check, 30000)
+      setInterval(tick, 1000)
+    </script>
+  </body>
+</html>

@@ -1,8 +1,8 @@
 # 📋 BITÁCORA DE CAMBIOS — ALERTA360
 
 **Proyecto:** ALERTA360 — Plataforma Global de Alertas Tempranas para Desastres Naturales  
-**Última actualización:** 2026-10-17  
-**Versión actual:** 0.1.0 (MVP) + Fase 2 Infraestructura + Fase 3 Infraestructura + Fase 4 Estructura
+**Última actualización:** 2026-10-18  
+**Versión actual:** 0.4.0 (MVP Fases 1-3 + producción + motor de alertas Fase 4) — Fase 4 implementada y tests pasando ✓
 
 ---
 
@@ -57,24 +57,128 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 #### Estado:
 - ✅ Type-check: 0 errores (tsc --noEmit --skipLibCheck)
 
-### **2026-10-17 — Alerta360 UI Redesign v2 + Map3D Integration**
+### **2026-10-18 — Fase 3: integración completa y verificación final**
 #### Cambios Realizados:
-- ✅ **`alerta360-ui-redesign (1)/`** — Paquete v2 aplicado: layer panel, heat map, edificios 3D, timeline 24h, 4 basemaps, clustering
-- ✅ **`src/components/Map.tsx`** — REescrito con: `BASEMAPS` (dark/sat/topo/relief), `ClusterLayer` (agrupación 56px + merge 40px), `HeatLayer` (leaflet.heat), `EventConnections` (líneas entre eventos < 400 pares), `TimelineSlider` (24h, play/pause, scrub), `LayerPanel` (Layers button → dropdown con toggles), `Toggle` component. Cada capa tiene CSS filter (`data-basemap` attribute).
-- ✅ **`src/components/Map3D.tsx`** — Actualizado: interop `maplibreglNS.default ?? maplibreglNS`, OSM vector tiles (OpenFreeMap) para edificios 3D (`fill-extrusion` con altura real), GeoJSON cluster source, heatmap nativo MapLibre, labels `place` layer, click-to-expand clusters (`getClusterExpansionZoom`), `ResizeObserver` para resize.
-- ✅ **`src/App.tsx`** — State `timeline` (TimelineState: enabled/hoursAgo/playing), lógica de reproducción (15-min steps cada 110ms), filtrado de eventos por ventana temporal `[now-24h, now-hoursAgo]`.
-- ✅ **`src/index.css`** — `.a360-gl-*` marcadores HUD 3D, `.a360-bubble` clusters, `.a360-space` fondo estrellas para 3D, `data-basemap` CSS filters (dark/sat/topo/relief), `data-timeline` attribution offset.
-- ✅ **`src/types/leaflet-heat.d.ts`** — `declare module 'leaflet.heat'`
-- ✅ **`package.json`** — `maplibre-gl: ^4.7.1` (downgrade de ^6.14.0 que no arrancaba el worker en Vite), `leaflet.heat: ^0.2.0` (nueva)
+- ✅ `alerta360-produccion-alertas` analizada (29 archivos) y todos aplicados al proyecto principal.
+- ✅ `.github/workflows/deploy.yml` (nuevo) — Pipeline CI/CD completo (262 líneas): build-and-push a ghcr.io + deploy vía rsync + health check público con rollback automático.
+- ✅ `backend/package-lock.json` + `package-lock.json` (lockfiles con `prom-client`).
+- ✅ `prom-client @15.1.3` instalado en backend.
+- ✅ `monitoring/` completo: alerts.yml (8 reglas), alertmanager.yml, prometheus.yml, grafana dashboard + provisioning.
+- ✅ `docker-compose.prod.yml`: 10 servicios con healthchecks.
+- ✅ `nginx.conf`: TLS, HSTS, CSP, rate limiting, `/status`, `/metrics` bloqueado externo.
+- ✅ `public/status.html` (nuevo), `scripts/init-letsencrypt.sh` (nuevo).
+- ✅ `docs/FASE_3_PRODUCCION.md` (runbook), `.env.production.example`.
+- ✅ `backend/Dockerfile` multi-stage, `ALERTA360_ARQUITECTURA_MAESTRA.md` v1.2.
+- ✅ Limpieza: borradas carpetas `alerta360-fase3`, `alerta360-fase3 (1)` y `alerta360-ui-redesign (1)`.
 
 #### Estado:
-- ✅ Type-check: 0 errores (tsc --noEmit --skipLibCheck)
-- ✅ Build: 2461 módulos transformados, Map3D code-split (lazy chunk separado)
-- ✅ Dev server: HTTP 200 en :5173
-- ✅ 6 URLs ESRI de tiles verificadas HTTP 200 (dark/dark-ref/sat/sat-ref/topo/relief)
-- ✅ AWS Terrain Tiles verificadas HTTP 200 (76.5KB PNG)
-- ✅ OpenFreeMap vector tiles para edificios 3D
-- ✅ Push a rama `ui/redesign-v2` (commit ac05350)
+- ✅ TypeScript backend: 0 errores
+- ✅ Frontend build: OK (2.453 módulos, `status.html` en dist)
+- ✅ `/metrics` y `/health` probados localmente
+- ✅ YAML/JSON validados
+- ✅ Scripts ejecutables (`chmod +x`)
+- ⏳ Externo: proveedor cloud, DNS, certificado TLS real, despliegue
+
+### **2026-10-18 — Fase 4: motor de alertas + fix crítico asyncHandler**
+#### Cambios Realizados:
+- ✅ **`backend/src/app.ts`** (nuevo, 154 líneas) — Refactor: `buildApp()` separa lógica de arranque de `listen()`. Testeable con `app.inject()` + Prisma falso. CORS mejorado (localhost/127.0.0.1/LAN IPs en dev, 24h preflight cache). Registra 5 rutas + WebSocket + health + métricas.
+- ✅ **`backend/src/services/matching.ts`** (nuevo, 290 líneas) — Motor de alertas con 5 reglas: (1) evento activo + no null-island, (2) tipo en `disasterTypes`, (3) severidad ≥ `minSeverity`, (4) ubicación dentro del radio, (5) canal habilitado (SMS solo high+). Dedupe vía `createMany({ skipDuplicates: true })`. Push en vivo vía WebSocket.
+- ✅ **`backend/src/realtime/hub.ts`** + **`ws.ts`** (nuevo) — `AlertHub` (Map usuario→sockets), `GET /ws/alerts?token=<jwt>` con cierre 1008 si falta token.
+- ✅ **`backend/src/routes/notifications.ts`** + **`preferences.ts`** (nuevo) — GET `/api/notifications`, POST `/read`, GET/PUT `/api/preferences`.
+- ✅ **`backend/src/utils/geo.ts`** (nuevo) — Haversine, severity ranking, null-island check.
+- ✅ **`backend/src/middleware/errorHandler.ts`** (corregido) — **Bug crítico arreglado:** `asyncHandler` ahora usa `return await fn(...)` — antes no devolvía la promesa y colgaba todas las rutas autenticadas (`/api/locations`, `/api/auth/me`).
+- ✅ **`backend/src/index.ts`** — Arranca `buildApp()` + `startIngestScheduler` con `onEventCreated → matchEvent(hub)`.
+- ✅ **`backend/test/`** (nuevo) — 37 tests: `geo.test.ts` (10), `matching.test.ts` (17), `routes.test.ts` (10). `vitest.config.ts`.
+- ✅ **`src/components/NotificationsPanel.tsx`** (nuevo) — Bandeja UI: notificaciones agrupadas por evento, canales, contador real en la campana.
+- ✅ **`src/hooks/useAlerts.ts`** (nuevo) — WebSocket hook con reconexión.
+- ✅ **`backend/plugins/metrics.ts`** — Métricas nuevas: `matchingRuns`, `matchingMatches`, `matchingDuration`, `notificationsCreated`, `wsConnections`.
+- ✅ **`docs/fase4/MOTOR_ALERTAS.md`** (nuevo) — Documentación del motor de alertas.
+- ✅ **`docs/redesign/notificaciones.png`** (nuevo) — Captura de la UI de notificaciones.
+
+#### Estado:
+- ✅ TypeScript backend: 0 errores (`tsc --noEmit --skipLibCheck`)
+- ✅ Tests: 37/37 pasando (`vitest run`)
+- ✅ Build frontend: 2.461 módulos, index 732 kB (240 kB gzip) + Map3D chunk
+
+### **2026-10-18 — Fase 3: producción lista (métricas, alertas, TLS, backups y status page)**
+#### Cambios Realizados:
+- ✅ **`backend/src/plugins/metrics.ts`** (nuevo) — Registro de Prometheus con `prom-client`: métricas de proceso con prefijo `alerta360_`, histograma y contador HTTP por método/ruta/estado, y gauges de ingesta (última correcta, duración del ciclo, eventos activos, errores por fuente).
+- ✅ **`backend/src/index.ts`** — `GET /metrics`; `/health` enriquecido (base de datos con latencia, frescura de la ingesta, uptime y versión) que responde **503** si PostgreSQL falla; apagado ordenado con SIGTERM/SIGINT para que Docker no corte peticiones.
+- ✅ **`backend/src/services/ingestion.ts`** — Instrumentación de cada ciclo: eventos nuevos por fuente, errores, duración y marca de última ingesta correcta.
+- ✅ **`monitoring/alerts.yml`** (nuevo) — 8 reglas: API caída, 5xx >5 %, p95 >1 s, ingesta parada >15 min, 3 h sin eventos, errores de inserción, memoria >512 MB y pico de tráfico.
+- ✅ **`monitoring/alertmanager.yml`** (nuevo) — Enrutado a webhook (`ALERT_WEBHOOK_URL`) con inhibición cuando el backend está caído.
+- ✅ **`monitoring/grafana/`** (nuevo) — Datasource y dashboard provisionados: 6 stats y 5 series (estado, latencia p50/p95/p99, peticiones, errores, eventos ingestados, memoria/CPU).
+- ✅ **`docker-compose.prod.yml`** — 10 servicios con healthchecks, límites de logs y puertos de observabilidad solo en `127.0.0.1`: backend (build multi-stage), nginx, certbot (renovación cada 12 h), prometheus, alertmanager, grafana, node-exporter, postgres-exporter y backup diario.
+- ✅ **`nginx.conf`** — TLS 1.2/1.3, HSTS, CSP, `Permissions-Policy`, cache inmutable de `/assets`, ruta `/status`, ACME challenge en HTTP, bloqueo externo de `/metrics` y gzip ampliado.
+- ✅ **`public/status.html`** (nuevo) — Página de estado pública: consulta `/health` cada 30 s y muestra API, base de datos, última ingesta y uptime.
+- ✅ **`backend/Dockerfile`** — Build multi-stage (`dist` + dependencias de producción), usuario `node` y `HEALTHCHECK`.
+- ✅ **`scripts/`** — `backup.sh` (contenedor u host, retención configurable, S3 opcional), `deploy.sh` (pull de imagen, `db push`, health check con reintentos y traza de rollback) e `init-letsencrypt.sh` (certificado temporal + emisión real).
+- ✅ **`docs/FASE_3_PRODUCCION.md`** (nuevo) — Runbook: arquitectura, servidor, puesta en marcha, observabilidad, backups, rollback y checklist de go-live.
+- ✅ **`.env.production.example`** (nuevo) — Variables de producción documentadas.
+
+#### Estado:
+- ✅ Type-check y build del backend: 0 errores
+- ✅ Build del frontend: OK (incluye `status.html` en `dist`)
+- ✅ `/metrics` y `/health` probados en local: métricas expuestas y 503 correcto sin base de datos
+- ✅ Sintaxis validada: YAML de compose/Prometheus/Alertmanager/Grafana, JSON del dashboard y los tres scripts
+- ⏳ Externo: proveedor cloud, DNS, emisión del certificado real y despliegue
+
+### **2026-10-18 — Fase 3: CD real, `real_ip` de Cloudflare y runbook ampliado**
+#### Cambios Realizados:
+- ✅ **`.github/workflows/deploy.yml`** — Reescrito: compila el `dist/` en CI y lo sube por `rsync` con swap atómico (antes el job SSH **no desplegaba el frontend**), usa `docker compose` v2, arranca la BD y espera `pg_isready`, aplica `prisma db push`, valida `nginx -t`, recarga nginx, comprueba `/health` en local y en público, guarda `.current_tag` y **revierte solo** (dist anterior + tag previo) si algo falla. Imágenes con nombre en minúsculas y tag `sha-<commit>`.
+- ✅ **`.gitignore`** — Se versionan los `package-lock.json`: CI y el `Dockerfile` usan `npm ci` y el build fallaba en un clon limpio.
+- ✅ **`nginx.conf`** — Bloque `real_ip` de Cloudflare (22 rangos) listo para descomentar; `/assets` con una sola cabecera `Cache-Control` y las cabeceras de seguridad heredadas.
+- ✅ **`scripts/deploy.sh`** — Levanta la BD antes del `db push` (el primer despliegue fallaba con `--no-deps`) y registra `.current_tag` para el rollback del pipeline.
+- ✅ **`docs/FASE_3_PRODUCCION.md`** — Firewall (`ufw`), prueba de restauración mensual con RTO/RPO, despliegue continuo y nueva sección de Cloudflare (orden de activación, caché y renovación).
+
+#### Estado:
+- ✅ `nginx -t` con y sin el bloque de Cloudflare y prueba real con nginx 1.26: 301 en `:80`, `/status` 200, `/metrics` 404, proxy de `/api`, ACME 200, rate limit 429 tras la ráfaga y HSTS/CSP presentes
+- ✅ YAML del workflow validado y `bash -n` de los tres scripts
+- ✅ Parche verificado con `git apply --check` sobre `160b2fa`
+- ⏳ Externo: servidor, DNS, certificado y secretos `PROD_*`
+
+### **2026-10-18 — Motor de alertas, notificaciones en vivo y arreglo de CORS**
+#### Cambios Realizados:
+- ✅ **`backend/src/services/matching.ts`** (nuevo) — Motor de alertas con 5 reglas: evento activo y con coordenadas reales, tipo seguido, severidad mínima, ubicación dentro del radio y algún canal habilitado. Elige la ubicación más cercana, envía SMS solo desde `high` y deduplica por `@@unique(userId, eventId, channel)`.
+- ✅ **`backend/src/utils/geo.ts`** (nuevo) — Haversine, rangos de severidad y descarte de la coordenada `0,0` (fuentes sin geocodificar).
+- ✅ **`backend/src/realtime/`** (nuevo) — Hub de WebSockets por usuario y ruta `WS /ws/alerts?token=`; la alerta se empuja en vivo y la notificación queda en `sent` si el socket estaba abierto.
+- ✅ **`backend/src/routes/notifications.ts` / `preferences.ts`** (nuevos) — Bandeja (listar, contador, marcar leída, marcar todas, borrar) y preferencias (radio, tipos, `minSeverity`, canales) validadas con Zod.
+- ✅ **`backend/src/app.ts`** (nuevo) — `buildApp()` separado del arranque para poder testear con `app.inject()` y un Prisma inyectado; `index.ts` queda como punto de entrada.
+- ✅ **`backend/src/middleware/errorHandler.ts`** — `asyncHandler` no devolvía la promesa: usado como `preHandler` **colgaba todas las rutas autenticadas**. Corregido.
+- ✅ **CORS** — `CORS_ORIGIN` acepta una lista separada por comas; en desarrollo se permite cualquier `localhost`/`127.0.0.1`/IP local con cualquier puerto; el preflight se cachea 24 h. El frontend pasa a rutas relativas `/api` y `/ws` con proxy de Vite (nginx en producción), así que el CORS deja de estar en el camino.
+- ✅ **UI** — `useAlerts` (sondeo cada 30 s + WebSocket con reconexión), `NotificationsPanel` (agrupa por evento, canales, distancia y no leídas) y campana con badge real en el header.
+- ✅ **Tests** — 37 pruebas con Vitest: geo, reglas de matching (incluye deduplicación y caída de la BD) y API de notificaciones/preferencias con Prisma falso.
+- ✅ **Métricas** — `alerta360_notifications_created_total{channel}`, `matching_runs_total`, `matching_matches_total`, `matching_duration_seconds` y `ws_connections`.
+- ✅ **`docs/fase4/MOTOR_ALERTAS.md`** (nuevo) — Reglas, API, WebSocket, métricas, CORS y limitaciones conocidas.
+
+#### Estado:
+- ✅ Backend: `tsc` limpio, build OK, 37/37 tests
+- ✅ E2E con PostgreSQL 17 real: usuario en Bogotá → 3 notificaciones (push/email/sms) y alerta por WebSocket; el usuario de Medellín no recibe nada
+- ✅ CORS verificado en desarrollo y producción (lista con y sin `www`; orígenes ajenos bloqueados)
+- ✅ Frontend: `tsc` limpio, build de 2.461 módulos; captura en `docs/redesign/notificaciones.png`
+- ⏳ Pendiente: entrega real de email (SendGrid) y SMS (Twilio); hoy la notificación queda en `pending`
+
+### **2026-10-18 — Mapa v2: calor, edificios 3D, clusters navegables y línea de tiempo**
+#### Cambios Realizados:
+- ✅ **`src/components/Map.tsx`** — Reescrito: `BASEMAPS` conmutables (Oscuro · Satélite · Terreno · Relieve, todos sobre Esri y sin API key), `HeatLayer` (`leaflet.heat`, gradiente azul → rojo), `ClusterLayer` (celdas de 56 px + fusión de grupos a <40 px; clic → `fitBounds` a la zona), `EventConnections`, panel de capas de 224 px y atribución que se eleva cuando la barra de tiempo está visible.
+- ✅ **`src/components/Map3D.tsx`** — Globo (MapLibre 4.7.1) + terreno AWS (exaggeration 1.25) + satélite Esri; edificios `fill-extrusion` de OpenFreeMap a zoom ≥13, con vuelo a la ciudad al activarlos; topónimos Noto Sans; heatmap nativo con radio 26→74 px e intensidad 1.6→3.0; clusters con halo/disco/contador y clic con `easeTo` (más respaldo heurístico si `getClusterExpansionZoom` no responde); `ResizeObserver`.
+- ✅ **`src/App.tsx`** — Estado `timeline` (`enabled` / `hoursAgo` / `playing`), reproducción en pasos de 15 min cada 110 ms y filtrado por ventana `[ahora − 24 h, ahora − hoursAgo]`; el calor, los clusters y los contadores del panel acompañan la reproducción.
+- ✅ **`src/index.css`** — Filtros por `data-basemap`, estilos de MapLibre, marcadores HUD (`.a360-gl-*`, `.a360-bubble`), fondo de estrellas y offset de atribuciones con `data-timeline`.
+- ✅ **`src/data/demoEvents.ts`** — 178 eventos deterministas repartidos en las últimas 24 h reales (0 críticos · 4 altos · 174 bajos) para que la línea de tiempo muestre actividad.
+- ✅ **`src/types/leaflet-heat.d.ts`** — Tipos para `leaflet.heat`.
+- ✅ **`package.json`** — `maplibre-gl ^4.7.1` (la 6.x no arranca el worker en Vite dev) y `leaflet.heat ^0.2.0`.
+- ✅ **`docs/redesign/MAPA.md`** — Documentación de capas, calor, edificios, clusters y línea de tiempo, con capturas.
+
+#### Estado:
+- ✅ Type-check: 0 errores (`tsc --noEmit`)
+- ✅ Build: 2.461 módulos; `index` 732 kB (240 kB gzip) + `Map3D` 812 kB (221 kB gzip) en chunk aparte
+- ✅ Dev server: HTTP 200 en `:5173`
+- ✅ Teselas verificadas: 6 URLs Esri, AWS Terrain y OpenFreeMap
+- ✅ Merge a `main` (`160b2fa`) y rama `ui/redesign-v2` publicada
+
+#### Pendiente:
+- ⏳ Borrar `alerta360-ui-redesign (1)/` (copia de referencia de 9 archivos que la app no usa) y el bloque `watch.ignored` de `vite.config.ts` que existe solo para esa carpeta.
+- ⏳ Motor de alertas (matching evento → usuarios) y notificaciones push/email.
 
 
 #### Cambios Realizados (Frontend):
@@ -355,11 +459,11 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 | Fase 0: Validación | ⏳ Pendiente | 0% | - |
 | Fase 1: MVP Frontend | ✅ Completa | 100% | 2026-10-15 |
 | Fase 2: Infraestructura | ✅ Completa | 100% | 2026-10-15 |
-| Fase 2: Features | ⏳ Pendiente | 0% | - |
+| Fase 2: Features | 🚧 En curso | 40% | 2026-10-18 |
 | Fase 3: Infraestructura | ✅ Completa | 100% | 2026-10-15 |
-| Fase 3: Deploy Real | ⏳ Pendiente | 0% | - |
-| Fase 4: Estructura | ✅ Completa | 100% | 2026-10-15 |
-| Fase 4: Desarrollo | ⏳ Pendiente | 0% | - |
+| Fase 3: Deploy Real | ✅ Lista | 100% | 2026-10-18 |
+|| Fase 4: Estructura | ✅ Completa | 100% | 2026-10-15 |
+|| Fase 4: Motor de Alertas | ✅ Implementada | 100% | 2026-10-18 |
 
 ---
 
@@ -368,15 +472,15 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 ```
 ALERTA360/
 ├── src/                       # Frontend (Fase 1) — archivos en raíz del proyecto
-│   ├── components/            # Header, Map, Dashboard
+│   ├── components/            # Header, Map, Map3D, Dashboard, Sparkline, EventDetailCard, AuthModal
 │   ├── services/              # api.ts
 │   ├── types/                 # TypeScript types
 │   └── ...
 ├── backend/                   # Fastify (Fase 2)
 │   ├── src/
 │   │   ├── index.ts       # Server entry
-│   │   ├── routes/        # (pendiente)
-│   │   ├── services/      # (pendiente)
+│   │   ├── routes/        # auth, events, locations
+│   │   ├── services/      # ingestion.ts (USGS + NOAA)
 │   │   └── ...
 │   ├── prisma/
 │   │   └── schema.prisma  # DB schema
@@ -422,18 +526,18 @@ ALERTA360/
 ## 📈 Métricas del Proyecto
 
 ### Código
-- **Líneas de código productivo:** ~590 (frontend) + ~100 (backend)
-- **Componentes React:** 3 (Header, Map, Dashboard)
+- **Líneas de código productivo:** ~2.825 (frontend) + ~693 (backend)
+- **Componentes React:** 7 + App (Header, Map, Map3D, Dashboard, Sparkline, EventDetailCard, AuthModal)
 - **Modelos de BD:** 6 (User, UserPreference, Location, DisasterEvent, Notification, AuditLog)
-- **TypeScript files:** 11
+- **TypeScript files:** 24 (14 frontend + 10 backend)
 - **Python files:** 1
 
 ### Performance
-- **Frontend Build:** 3.24s
-- **Backend Build:** ~2s
-- **Bundle Size (gzipped):** 114.36 kB
+- **Frontend Build:** ~13 s (2.461 módulos)
+- **Backend Build:** ~2 s
+- **Bundle Size (gzipped):** 240 kB inicial + 221 kB diferido (Map3D)
 - **Load Time (4G):** ~0.5s
-- **Lighthouse Score:** ~92/100
+- **Lighthouse Score:** ~92/100 (medido antes del rediseño; sin re-medir)
 
 ### Calidad
 - **TypeScript Warnings:** 0
@@ -474,9 +578,7 @@ ALERTA360/
 
 ---
 
-**Última actualización:** 2026-10-15  
-**Versión de la bitácora:** 1.0  
+**Última actualización:** 2026-10-18  
+**Versión de la bitácora:** 1.1  
 **Status:** ✅ Activo
 
-EOF
-cat BITACORA.md | head -50

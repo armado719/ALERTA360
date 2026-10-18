@@ -2,6 +2,13 @@ import { PrismaClient } from '@prisma/client'
 import axios from 'axios'
 import logger from '../utils/logger'
 import { config } from '../utils/config'
+import {
+  activeEventsGauge,
+  ingestionCycleDuration,
+  ingestionErrorsTotal,
+  ingestionEventsTotal,
+  markIngestionSuccess,
+} from '../plugins/metrics'
 
 // ============================================================================
 // USGS Earthquake API
@@ -154,8 +161,39 @@ function mapNOAAType(event: string): string {
 // ============================================================================
 let ingestCounter = 0
 
-export async function runIngestion(prisma: PrismaClient): Promise<{ usgs: number; noaa: number }> {
+/**
+ * Enganches opcionales para no acoplar la ingesta al motor de alertas.
+ * `onEventCreated` se llama por cada evento nuevo ya persistido; si falla,
+ * se registra el error y se sigue con el siguiente evento.
+ */
+export interface IngestionHooks {
+  onEventCreated?: (event: {
+    id: string
+    type: string
+    latitude: number
+    longitude: number
+    severity: string
+    isActive: boolean
+    occurredAt: Date
+    title: string
+  }) => void | Promise<void>
+}
+
+async function notifyHooks(hooks: IngestionHooks | undefined, event: Parameters<NonNullable<IngestionHooks['onEventCreated']>>[0]) {
+  if (!hooks?.onEventCreated) return
+  try {
+    await hooks.onEventCreated(event)
+  } catch (err) {
+    logger.error({ err, eventId: event.id }, '[INGESTION] onEventCreated failed')
+  }
+}
+
+export async function runIngestion(
+  prisma: PrismaClient,
+  hooks?: IngestionHooks
+): Promise<{ usgs: number; noaa: number }> {
   const cycle = ++ingestCounter
+  const startedAt = Date.now()
   logger.info(`[INGESTION] Starting cycle #${cycle}`)
 
   const usgsEvents = await fetchUSGS()
@@ -171,14 +209,16 @@ export async function runIngestion(prisma: PrismaClient): Promise<{ usgs: number
       })
       if (existing) continue // deduplicate
 
-      await prisma.disasterEvent.create({
+      const created = await prisma.disasterEvent.create({
         data: {
           ...mapped,
           isActive: true,
         },
       })
       usgsInserted++
+      await notifyHooks(hooks, created)
     } catch (err) {
+      ingestionErrorsTotal.inc({ source: 'usgs' })
       logger.error({ err, eventId: feature.id }, 'Error inserting USGS event')
     }
   }
@@ -196,25 +236,40 @@ export async function runIngestion(prisma: PrismaClient): Promise<{ usgs: number
       })
       if (existing) continue
 
-      await prisma.disasterEvent.create({
+      const created = await prisma.disasterEvent.create({
         data: {
           ...mapped,
           isActive: true,
         },
       })
       noaaInserted++
+      await notifyHooks(hooks, created)
     } catch (err) {
+      ingestionErrorsTotal.inc({ source: 'noaa' })
       logger.error({ err, alertId: alert.id }, 'Error inserting NOAA event')
     }
   }
 
   const total = usgsInserted + noaaInserted
+
+  // ---- métricas ----
+  if (usgsInserted > 0) ingestionEventsTotal.inc({ source: 'usgs' }, usgsInserted)
+  if (noaaInserted > 0) ingestionEventsTotal.inc({ source: 'noaa' }, noaaInserted)
+  ingestionCycleDuration.set((Date.now() - startedAt) / 1000)
+  markIngestionSuccess()
+
+  try {
+    activeEventsGauge.set(await prisma.disasterEvent.count({ where: { isActive: true } }))
+  } catch (err) {
+    logger.warn({ err }, '[INGESTION] No se pudo contar los eventos activos')
+  }
+
   logger.info(`[INGESTION] Cycle #${cycle} complete — USGS: ${usgsInserted} new, NOAA: ${noaaInserted} new (${total} total)`)
   return { usgs: usgsInserted, noaa: noaaInserted }
 }
 
 // Schedule: every 5 minutes (300 seconds)
-export function startIngestScheduler(prisma: PrismaClient) {
+export function startIngestScheduler(prisma: PrismaClient, hooks?: IngestionHooks) {
   const usgsEnabled = config.USGS_ENABLED === 'true'
   const noaaEnabled = config.NOAA_ENABLED === 'true'
 
@@ -226,11 +281,11 @@ export function startIngestScheduler(prisma: PrismaClient) {
   const intervalMs = config.INGEST_INTERVAL
 
   // Run immediately on startup, then every intervalMs
-  runIngestion(prisma).catch(err => logger.error({ err }, 'Initial ingestion failed'))
+  runIngestion(prisma, hooks).catch(err => logger.error({ err }, 'Initial ingestion failed'))
 
   setInterval(() => {
-    runIngestion(prisma).catch(err => logger.error({ err }, 'Scheduled ingestion failed'))
+    runIngestion(prisma, hooks).catch(err => logger.error({ err }, 'Scheduled ingestion failed'))
   }, intervalMs)
 
-  logger.info(`[INGESTION] Scheduler started — interval: ${intervalMs / 1000}s`, )
+  logger.info(`[INGESTION] Scheduler started — interval: ${intervalMs / 1000}s`)
 }

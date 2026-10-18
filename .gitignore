@@ -1,6 +1,6 @@
 # Dependencies
+# package-lock.json SÍ se versiona: CI y el Dockerfile usan `npm ci`.
 node_modules/
-package-lock.json
 yarn.lock
 pnpm-lock.yaml
 
@@ -57,3 +57,14 @@ ml/.env
 
 # OS
 Thumbs.db
+
+# Producción
+.env.produccion
+.env.production
+ssl/
+backups/
+
+# Despliegue (archivos que crea el CD en el servidor)
+.current_tag
+dist.old/
+dist.new/

@@ -1,89 +1,54 @@
-import Fastify from 'fastify'
-import cors from '@fastify/cors'
-import jwt from '@fastify/jwt'
-import { PrismaClient } from '@prisma/client'
+import { buildApp } from './app'
 import { config } from './utils/config'
 import logger from './utils/logger'
-import { setupErrorHandler } from './middleware/errorHandler'
-import { registerAuthRoutes } from './routes/auth'
-import { registerEventRoutes } from './routes/events'
-import { registerLocationRoutes } from './routes/locations'
 import { startIngestScheduler } from './services/ingestion'
+import { matchEvent } from './services/matching'
+import { wsConnections } from './plugins/metrics'
 
-// Import type augmentations for Fastify plugins
-import '@fastify/jwt'
+/**
+ * Punto de entrada: construye la app, arranca la ingesta con el motor de
+ * alertas enganchado y escucha. Toda la lógica vive en `app.ts` para poder
+ * testearla sin abrir un puerto.
+ */
+const app = await buildApp()
 
-// ============================================================================
-// SINGLETON: One PrismaClient instance shared across all modules
-// nodebestpractices: avoid multiple DB pool instances per request
-// ============================================================================
-const prisma = new PrismaClient({
-  log: ['error', 'warn'],
+// Cada evento nuevo entra al motor de matching, que crea las notificaciones
+// y las empuja por WebSocket a quien esté conectado.
+startIngestScheduler(app.prisma, {
+  onEventCreated: async event => {
+    await matchEvent(app.prisma, event, app.hub)
+  },
 })
 
-// ============================================================================
-// FASTIFY SERVER
-// ============================================================================
-const fastify = Fastify({
-  logger: false, // We use our own pino logger instance for consistent output
-})
-
-// ============================================================================
-// PLUGINS
-// ============================================================================
-await fastify.register(cors, {
-  origin: config.CORS_ORIGIN,
-  credentials: true,
-})
-
-await fastify.register(jwt, {
-  secret: config.JWT_SECRET,
-})
-
-// Attach Prisma to Fastify instance (decorator pattern)
-fastify.decorate('prisma', prisma)
-
-// ============================================================================
-// ERROR HANDLING (centralized)
-// ============================================================================
-setupErrorHandler(fastify)
-
-// ============================================================================
-// HEALTH CHECK
-// ============================================================================
-fastify.get('/health', async () => {
-  return { status: 'ok', timestamp: new Date().toISOString() }
-})
-
-// ============================================================================
-// ROUTES
-// ============================================================================
-await fastify.register(registerAuthRoutes, { prefix: '/api/auth' })
-await fastify.register(registerEventRoutes, { prefix: '/api' })
-await fastify.register(registerLocationRoutes, { prefix: '/api' })
-
-// ============================================================================
-// START SERVER
-// ============================================================================
 const start = async () => {
   try {
-    // Start ingestion scheduler in background
-    startIngestScheduler(prisma)
-    await fastify.listen({ port: config.PORT, host: '0.0.0.0' })
+    await app.listen({ port: config.PORT, host: '0.0.0.0' })
     logger.info(`Server running on http://localhost:${config.PORT}`)
+
+    // Estado inicial de las métricas que dependen del hub
+    wsConnections.set(app.hub.size)
   } catch (err) {
     logger.error(err, 'Failed to start server')
-    await prisma.$disconnect()
+    await app.close()
     process.exit(1)
   }
 }
 
 start()
 
-// Graceful shutdown
-process.on('SIGINT', async () => {
-  logger.info('Shutting down gracefully...')
-  await prisma.$disconnect()
-  await fastify.close()
+// Graceful shutdown — Docker manda SIGTERM al reiniciar o desplegar
+const shutdown = async (signal: string) => {
+  logger.info({ signal }, 'Shutting down gracefully...')
+  try {
+    await app.close()
+  } catch (err) {
+    logger.error({ err }, 'Error during shutdown')
+  }
   process.exit(0)
+}
+
+process.on('SIGINT', () => void shutdown('SIGINT'))
+process.on('SIGTERM', () => void shutdown('SIGTERM'))
+process.on('unhandledRejection', reason => {
+  logger.error({ reason }, 'Unhandled rejection')
 })

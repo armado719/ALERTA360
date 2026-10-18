@@ -29,8 +29,9 @@ model UserPreference {
   userId              String   @unique
   user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
-  alertRadiusKm       Int      @default(50)
+  alertRadiusKm       Int      @default(50)   // radio por defecto si la ubicación no define uno
   disasterTypes       String[] @default(["earthquake", "storm", "flood", "rain"])
+  minSeverity         String   @default("low") // low | medium | high | critical
   pushEnabled         Boolean  @default(true)
   emailEnabled        Boolean  @default(true)
   smsEnabled          Boolean  @default(false)
@@ -111,7 +112,8 @@ model Notification {
   deliveredAt DateTime?
   readAt      DateTime?
   
-  @@index([userId])
+  @@unique([userId, eventId, channel]) // evita duplicados si la ingesta repite el evento
+  @@index([userId, readAt])
   @@index([eventId])
   @@index([status])
 }

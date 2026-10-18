@@ -6,9 +6,17 @@ import Dashboard from './components/Dashboard'
 import Header from './components/Header'
 import AuthModal from './components/AuthModal'
 import EventDetailCard from './components/EventDetailCard'
+import NotificationsPanel from './components/NotificationsPanel'
+import { useAlerts } from './hooks/useAlerts'
 import { DisasterEvent } from './types'
 import type { TimelineState } from './components/Map'
-import { fetchDisasterEvents, getMe, setAuthToken, AuthUser } from './services/api'
+import {
+  fetchDisasterEvents,
+  getMe,
+  setAuthToken,
+  type AuthUser,
+  type ServerNotification,
+} from './services/api'
 import { DEMO_EVENTS } from './data/demoEvents'
 
 function App() {
@@ -30,8 +38,28 @@ function App() {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [showErrorToast, setShowErrorToast] = useState(true)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
 
   /* ---------- Auth ---------- */
+  // Alertas del motor de matching: bandeja + push en vivo por WebSocket
+  const alerts = useAlerts(!!user)
+
+  const openAlertOnMap = useCallback((notification: ServerNotification) => {
+    setSelectedEvent({
+      id: notification.event.id,
+      type: notification.event.type as DisasterEvent['type'],
+      title: notification.event.title,
+      description: '',
+      latitude: notification.event.latitude,
+      longitude: notification.event.longitude,
+      severity: notification.event.severity,
+      occurredAt: notification.event.occurredAt,
+      detectedAt: notification.event.occurredAt,
+      source: notification.event.source,
+    })
+    setNotificationsOpen(false)
+  }, [])
+
   useEffect(() => {
     const initAuth = async () => {
       const token = localStorage.getItem('alerta360_token')
@@ -141,7 +169,23 @@ function App() {
           setAuthToken(null)
           setAuthMode('login')
           setShowAuthModal(true)
+          setNotificationsOpen(false)
         }}
+        unread={alerts.unread}
+        onNotificationsClick={() => setNotificationsOpen(open => !open)}
+        notificationsOpen={notificationsOpen}
+      />
+
+      <NotificationsPanel
+        open={notificationsOpen}
+        onClose={() => setNotificationsOpen(false)}
+        notifications={alerts.notifications}
+        unread={alerts.unread}
+        connected={alerts.connected}
+        loading={alerts.loading}
+        onOpenEvent={openAlertOnMap}
+        onMarkRead={alerts.markRead}
+        onMarkAll={alerts.markAllRead}
       />
 
       <div className="relative z-10 flex flex-col lg:flex-row flex-1 min-h-0 gap-3 p-3">

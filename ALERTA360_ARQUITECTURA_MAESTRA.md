@@ -1,8 +1,8 @@
 # ALERTA360 — Plataforma Global de Alertas Tempranas para Desastres Naturales
 
-
-**Fecha:** 2026-10-15  
-**Estado:** Implementación en progreso — Fase 1-3 infraestructura completada  
+**Versión:** 1.3  
+**Fecha:** 2026-10-18  
+**Estado:** MVP funcional en `main` — motor de alertas entregado (Hito 6 ✅); falta entrega real de email/SMS  
 **Propósito:** Documento de control de fases. Gobierna el avance del proyecto.
 
 ---
@@ -14,11 +14,12 @@
 3. [Solución Propuesta](#solución-propuesta)
 4. [Stack Tecnológico](#stack-tecnológico)
 5. [Modelo de Datos](#modelo-de-datos)
-6. [Fases de Desarrollo](#fases-de-desarrollo)
-7. [Integraciones Externas](#integraciones-externas)
-8. [Criterios de Éxito](#criterios-de-éxito)
-9. [Riesgos Identificados](#riesgos-identificados)
-10. [Registro de Avance](#registro-de-avance)
+6. [Visualización y mapa](#visualización-y-mapa)
+7. [Fases de Desarrollo](#fases-de-desarrollo)
+8. [Integraciones Externas](#integraciones-externas)
+9. [Criterios de Éxito](#criterios-de-éxito)
+10. [Riesgos Identificados](#riesgos-identificados)
+11. [Registro de Avance](#registro-de-avance)
 
 ---
 
@@ -83,43 +84,52 @@ Crear la **plataforma unificada de alertas tempranas para desastres naturales** 
 
 ## 💻 Stack Tecnológico
 
+> Estado a **2026-10-18**. Solo figura como «en uso» lo que el código importa hoy; lo demás está marcado como planificado.
+
 ### Frontend
-- **Framework:** React 18+ con TypeScript
-- **Build:** Vite
-- **Styling:** Tailwind CSS
-- **Mapa:** Leaflet + OpenStreetMap (gratis, open source)
-- **Notificaciones:** Web Notifications API + Service Workers
-- **Almacenamiento local:** IndexedDB (histórico de alertas)
-- **Estado:** Zustand (ligero, simple)
-- **HTTP:** Axios
+
+| Pieza | En uso | Notas |
+|---|---|---|
+| Framework | React 18 + TypeScript + Vite 5 | `tsc --noEmit` limpio |
+| Estilos | Tailwind CSS 3 | paleta oscura `#0b131d`, panel system propio |
+| Mapa 2D | Leaflet 1.9 + react-leaflet 4.2 | teselas Esri: Oscuro / Satélite / Terreno / Relieve, sin API key |
+| Mapa 3D | MapLibre GL **4.7.1** | globo, terreno AWS, satélite Esri, edificios OpenFreeMap |
+| Calor | `leaflet.heat` (2D) + capa `heatmap` nativa (3D) | peso por severidad |
+| Gráficas | Chart.js 4 + react-chartjs-2 | sparklines y dona por tipo |
+| Animación | Framer Motion 14 | paneles, tarjetas y barra de tiempo |
+| Iconos | lucide-react | — |
+| HTTP | Axios | cliente en `src/services/api.ts` |
+| Validación | Zod | compartido con el backend |
+
+**Planificado / no implementado:** Zustand (instalado, sin uso), IndexedDB (histórico local), Web Notifications + Service Worker (push), PWA.
 
 ### Backend
-|- **Runtime:** Node.js + Fastify (high-performance framework)
-|- **Lenguaje:** TypeScript
-|- **Base de datos:** PostgreSQL (eventos, usuarios, preferencias)
-|- **Cache:** Redis (datos de alertas en tiempo real)
-|- **Colas:** Bull (procesamiento de ingesta)
-|- **ORM:** Prisma
-|- **Plugins Fastify:** @fastify/cors, @fastify/jwt, @fastify/websocket
-|- **API Rest:** Fastify + Swagger (@fastify/swagger)
 
-### DevOps
-- **Containerización:** Docker + Docker Compose
-- **CI/CD:** GitHub Actions
-- **Hosting:** AWS/GCP/DigitalOcean (a definir)
-- **Monitoreo:** Prometheus + Grafana
+| Pieza | En uso | Notas |
+|---|---|---|
+| Runtime | Node.js + Fastify | rutas `auth`, `events`, `locations` |
+| ORM / BD | Prisma + PostgreSQL 16 | 6 modelos sincronizados con `db push` |
+| Auth | `@fastify/jwt` + bcrypt | JWT y middleware `requireAuth` compartido |
+| Config | Zod (`src/utils/config.ts`) | fail-fast de variables de entorno |
+| Logs | Pino + pino-pretty | logging estructurado |
+| Ingesta | `src/services/ingestion.ts` | USGS + NOAA cada 5 min vía `setInterval`; dedupe por `externalId + source` |
+| Tiempo real | `@fastify/websocket` | instalado, aún sin canal de alertas |
 
-### Seguridad
-- **Auth:** JWT (sin OAuth2 en MVP)
-- **HTTPS:** SSL/TLS
-- **Rate limiting:** Token bucket
-- **Validación:** Joi/Zod (backend), TypeScript (frontend)
+**Planificado / no implementado:** Redis (caché), Bull (colas), `@fastify/swagger` (OpenAPI), SendGrid (email), `node-cron` (hoy se usa `setInterval`), motor de matching evento → usuarios.
+
+### DevOps y seguridad
+
+- Docker + Docker Compose (10 servicios en producción: db, backend, nginx, certbot, prometheus, alertmanager, grafana, node-exporter, postgres-exporter y backup), CI/CD con GitHub Actions.
+- Observabilidad: `GET /metrics` (prom-client), 8 reglas de alerta, dashboard provisionado y página de estado pública en `/status`.
+- Seguridad: JWT, HTTPS/TLS y rate limiting en nginx, validación con Zod, variables de entorno validadas al arranque.
 
 ---
 
 ## 📊 Modelo de Datos
 
 ### Entidades Principales
+
+Verificado contra `backend/prisma/schema.prisma` el 2026-10-18: los seis modelos coinciden campo por campo.
 
 ```
 User
@@ -211,157 +221,168 @@ AuditLog (trazabilidad)
 
 ---
 
+## 🗺️ Visualización y mapa
+
+El mapa es hoy el diferencial del producto y funciona **sin ninguna API key**.
+
+### 2D — `src/components/Map.tsx`
+
+- **Cuatro estilos** conmutables: Oscuro (Esri Dark Gray + referencia), Satélite (World Imagery + límites), Terreno (World Topo) y Relieve (Shaded Relief). Cada uno con su filtro CSS vía `data-basemap`.
+- **Mapa de calor** (`leaflet.heat`): radio 30, blur 24, `maxZoom` 7, gradiente azul → rojo y peso por severidad (crítico 1.0 · alto 0.72 · medio 0.45 · bajo 0.2).
+- **Agrupación**: celdas de 56 px fusionadas a menos de 40 px; clic en burbuja → `fitBounds` a la zona; clic en evento → ficha.
+- **Línea de tiempo de 24 h**: ventana `[ahora − 24 h, ahora − X]`, play/pausa (15 min cada 110 ms) y slider de 0.25 h. El calor, los clusters y los contadores acompañan la reproducción.
+- Panel de capas de 224 px y atribuciones que se elevan cuando la barra de tiempo está visible.
+
+### 3D — `src/components/Map3D.tsx`
+
+- MapLibre GL 4.7.1 con proyección globo, `pitch` 38°, `maxPitch` 85° y terreno AWS (exaggeration 1.25).
+- Edificios `fill-extrusion` desde **OpenFreeMap** a zoom ≥ 13, con color por `render_height`; al activarlos la cámara vuela a la ciudad (Bogotá por defecto).
+- Topónimos (`place`) con Noto Sans; heatmap nativo con radio 26 → 74 px e intensidad 1.6 → 3.0 según zoom.
+- Clusters propios y clic con zoom de expansión (más respaldo heurístico si la API de MapLibre no responde).
+- Carga diferida con `React.lazy`: chunk `Map3D-*.js` de 812 kB (221 kB gzip) que no pesa en el arranque 2D.
+
+Detalle técnico y capturas: [`docs/redesign/MAPA.md`](docs/redesign/MAPA.md).
+
+---
+
 ## 🚀 Fases de Desarrollo
 
-### **FASE 0: VALIDACIÓN & PLANIFICACIÓN** 
-**Duración:** 2 semanas  
-**Responsable:** Equipo técnico  
+> Estado a **2026-10-18**. `[x]` = hecho y verificable en el repositorio; `[ ]` = pendiente.
+> Aplica la «regla dura» del final: una fase solo se marca completa cuando su checklist está entero.
+
+### **FASE 0: VALIDACIÓN & PLANIFICACIÓN** — ✅ cerrada (2026-10-15)
+**Duración planificada:** 2 semanas
 
 #### Objetivos
-- [ ] Confirmar acceso a APIs de USGS, NOAA y otras fuentes
-- [ ] Validar latencia de ingesta de datos (objetivo: <2 min)
+- [x] Confirmar acceso a APIs de USGS, NOAA y otras fuentes
+- [x] Validar latencia de ingesta (objetivo <2 min): USGS 1-5 min, NOAA 1-2 min
 - [ ] Mapear requerimientos exactos de usuarios (encuesta/entrevistas)
-- [ ] Definir stack final (validar que AWS/GCP disponibles)
-- [ ] Crear prototipo de mapa interactivo
+- [x] Definir stack final
+- [x] Crear prototipo de mapa interactivo
 
 #### Entregables
-- Documento de validación API (latencia, disponibilidad, limits)
-- Resumen de entrevistas con usuarios potenciales
-- Matriz de comparación: Leaflet vs Mapbox vs Google Maps
-- Prototipo funcional de mapa
-- Presupuesto estimado de infraestructura
+- [x] Documento de validación de APIs (esta maestra + `docs/redesign/MAPA.md`)
+- [ ] Resumen de entrevistas con usuarios potenciales
+- [x] Matriz de comparación de mapas (se optó por Esri + OpenFreeMap, sin API key)
+- [x] Prototipo funcional de mapa
+- [ ] Presupuesto estimado de infraestructura
 
-#### Criterios de Salida (Checklist de CIERRE)
-- ✅ Al menos 2 APIs de datos confirmadas y accesibles
-- ✅ Prototipo de mapa renderiza eventos reales
-- ✅ Equipo acuerda stack final
-- ✅ Timeline y presupuesto aprobados
-- ✅ Repositorio Git inicializado con estructura base
+#### Criterios de Salida
+- ✅ Al menos 2 APIs confirmadas y accesibles
+- ✅ El prototipo renderiza eventos reales
+- ✅ Stack acordado
+- ⏳ Timeline aprobado; presupuesto no definido
 
 ---
 
-### **FASE 1: MVP - CORE DE ALERTAS**
-**Duración:** 8 semanas  
-**Objetivo:** Plataforma funcional con alertas en tiempo real
+### **FASE 1: MVP - CORE DE ALERTAS** — 🚧 95 % (motor de alertas y bandeja entregados; faltan email/SMS reales y Swagger)
+**Duración planificada:** 8 semanas
 
-#### Sprint 1: Infraestructura & Backend Base (Semana 1-2)
-- [ ] Configurar Docker/PostgreSQL/Redis
-- [ ] Setup CI/CD con GitHub Actions
-- [ ] API base: Express.js con rutas REST
-- [ ] Schema de BD (Prisma migrations)
-- [ ] Autenticación JWT (registro/login)
-- [ ] Endpoint `/api/events` (GET con filtros)
+#### Sprint 1: Infraestructura & Backend Base — ✅
+- [x] Docker + PostgreSQL (Redis todavía no se usa)
+- [x] CI/CD con GitHub Actions
+- [x] API base con **Fastify** y rutas REST
+- [x] Schema de BD con Prisma (`db push`)
+- [x] Autenticación JWT (registro/login)
+- [x] Endpoint `/api/events` con filtros
 
-#### Sprint 2: Ingesta de Datos (Semana 3-4)
-- [ ] Adaptador USGS Earthquakes API
-- [ ] Adaptador NOAA Weather/Alerts API
-- [ ] Job de ingesta cada 5 minutos
-- [ ] Validación y normalización de datos
-- [ ] Endpoint `/api/events/{id}` (detalle)
-- [ ] Tests unitarios de parsers
+#### Sprint 2: Ingesta de Datos — ✅
+- [x] Adaptador USGS Earthquakes
+- [x] Adaptador NOAA Weather/Alerts
+- [x] Job de ingesta cada 5 minutos (`setInterval`)
+- [x] Validación y normalización (Zod + mapeo de severidad)
+- [x] Endpoint `/api/events/:id`
+- [ ] Tests unitarios de parsers (aún no hay suite de tests)
 
-#### Sprint 3: Notificaciones & Preferencias (Semana 5-6)
-- [ ] Modelo de User + Location + Preferences
-- [ ] Motor de matching: evento → usuarios afectados
-- [ ] Notificaciones push via Web Notifications API
-- [ ] Email básico (SendGrid)
-- [ ] Endpoint `/api/users/me` y `/api/locations`
+#### Sprint 3: Notificaciones & Preferencias — 🚧 85 %
+- [x] Modelos `User` + `Location` + `UserPreference` (con `minSeverity`)
+- [x] Motor de matching evento → usuarios afectados (`services/matching.ts`, 5 reglas + dedupe en BD)
+- [x] Push en vivo por WebSocket (`/ws/alerts`) y bandeja en la UI
+- [x] Endpoints `/api/notifications/*` y `/api/preferences`
+- [ ] Email real (SendGrid) y SMS (Twilio): hoy la notificación queda `pending`
+- [x] Endpoints `/api/auth/me` y `/api/locations`
 
-#### Sprint 4: Frontend MVP (Semana 7-8)
-- [ ] React + Vite setup
-- [ ] Mapa interactivo con Leaflet
-- [ ] Componentes: EventList, EventDetail, UserPreferences
-- [ ] Renderizar eventos en tiempo real en mapa
-- [ ] Login/registro básico
-- [ ] Conectar a API backend
+Detalle: [`docs/fase4/MOTOR_ALERTAS.md`](docs/fase4/MOTOR_ALERTAS.md).
 
-#### Entregables al Final de Fase 1
-- Plataforma web funcional en `alerta360.local`
-- API REST documentada (Swagger/OpenAPI)
-- Base de datos con 1 semana de histórico de eventos
-- Tests (>70% cobertura backend)
-- Docker Compose para levantar todo local
-- Documentación de deployment
+#### Sprint 4: Frontend MVP — ✅ (superado: mapa 2D/3D avanzado)
+- [x] React + Vite
+- [x] Mapa interactivo (Leaflet 2D + MapLibre 3D)
+- [x] Componentes de lista, detalle y preferencias
+- [x] Eventos en tiempo real en el mapa
+- [x] Login/registro
+- [x] Conexión con la API (con modo demo de respaldo)
 
-#### Criterios de Salida (Checklist de CIERRE)
-- ✅ Mapa renderiza eventos reales en tiempo real
-- ✅ Usuario puede registrarse, definir zonas de interés, recibir alertas
-- ✅ Alertas llegan en <2 minutos del evento
+#### Entregables al final de Fase 1
+- [x] Plataforma web funcional en `localhost:5173`
+- [ ] API documentada con OpenAPI (Swagger pendiente)
+- [x] Base de datos con histórico de eventos
+- [ ] Tests con >70 % de cobertura (hoy: 37 tests de motor, geo y API; cobertura sin medir)
+- [x] Docker Compose para levantar todo en local
+- [x] Documentación de despliegue (parcial, ver Fase 3)
+
+#### Criterios de Salida
+- ✅ El mapa renderiza eventos reales
+- ⏳ Registro y zonas de interés funcionan, pero **las alertas todavía no llegan**
+- ⏳ Latencia <2 min: depende del motor de alertas
 - ✅ Frontend funcional en móvil y escritorio
-- ✅ API documentada y testeable
-- ✅ Sin datos hardcodeados (todo de APIs reales)
-- ✅ 0 errores críticos en producción local
+- ⏳ API testeable, sin Swagger
+- ✅ Sin datos hardcodeados en producción (el modo demo es explícito)
+- ✅ 0 errores críticos en local
 
 ---
 
-### **FASE 2: PULIDO & ESCALABILIDAD**
-**Duración:** 4 semanas  
-**Objetivo:** Preparar para producción
+### **FASE 2: PULIDO & ESCALABILIDAD** — 🚧 40 %
+**Duración planificada:** 4 semanas
 
-#### Objetivos
-- [ ] Mejorar UX/UI basado en user testing
-- [ ] Agregar más tipos de desastres (landslides, volcanic)
-- [ ] Implementar histórico avanzado (charts, trends)
-- [ ] Optimizar performance (CDN, lazy loading)
-- [ ] Security audit (OWASP top 10)
-- [ ] Scaling test (¿Puede manejar 10k usuarios simultáneos?)
-- [ ] Traducir a inglés
-
-#### Entregables
-- Dashboard mejorado con estadísticas
-- Histórico de eventos con gráficos
-- App optimizada (<3s load time)
-- Reporte de seguridad auditado
-- Load testing report
+- [x] UX/UI rediseñada («Centro de Mando» oscuro) — 2026-10-17/18
+- [x] Más tipos de desastre en modelo y demo (landslide, volcanic, hurricane)
+- [x] Visualización avanzada: calor, edificios 3D, clusters y línea de tiempo
+- [x] Histórico básico (sparklines y dona por tipo)
+- [x] Optimización por lazy loading (`Map3D` en chunk aparte)
+- [ ] Security audit (OWASP Top 10)
+- [ ] Load testing (10k usuarios)
+- [ ] Traducción a inglés
+- [ ] Histórico avanzado (tendencias por rango de fechas)
 
 #### Criterios de Salida
-- ✅ Pasó security audit (0 críticos)
-- ✅ Load test: 10k usuarios sin degradación
-- ✅ Lighthouse score >90
-- ✅ UX testado con 20+ usuarios reales
-- ✅ Listo para producción
+- [ ] Security audit sin hallazgos críticos
+- [ ] Load test de 10k usuarios
+- ⏳ Lighthouse >90 (sin re-medir tras el rediseño)
+- [ ] UX testada con 20+ usuarios
 
 ---
 
-### **FASE 3: PRODUCCIÓN & GO-LIVE**
-**Duración:** 2 semanas  
-**Objetivo:** Deploy a producción
+### **FASE 3: PRODUCCIÓN & GO-LIVE** — 🚧 85 % (todo lo del repo listo; falta desplegar)
+**Duración planificada:** 2 semanas · **Runbook:** [`docs/FASE_3_PRODUCCION.md`](docs/FASE_3_PRODUCCION.md)
 
-#### Objetivos
-- [ ] Seleccionar proveedor cloud final (AWS/GCP/DO)
-- [ ] CI/CD a producción
-- [ ] SSL/TLS con Let's Encrypt
-- [ ] Configurar CDN (CloudFlare)
-- [ ] Monitoreo 24/7 (Prometheus + AlertManager)
-- [ ] Backup automático DB
-- [ ] Status page pública
-- [ ] Lanzar versión pública
-
-#### Entregables
-- Plataforma en alerta360.com (dominio)
-- Monitoring dashboard
-- Runbook de operaciones
-- Plan de disaster recovery
+- [ ] Seleccionar proveedor cloud final — *recomendado Hetzner CX22 o DigitalOcean; decisión externa*
+- [x] CI/CD preparado para producción (imagen en ghcr + `dist/` por rsync, `docker compose` v2, `prisma db push`, health check y rollback automático)
+- [x] SSL/TLS con Let's Encrypt (nginx + certbot con renovación cada 12 h)
+- [ ] CDN — *configuración de cache lista; falta activar Cloudflare*
+- [x] Monitoreo: `/metrics` con `prom-client`, Prometheus, 8 reglas de alerta, Alertmanager y dashboard provisionado en Grafana
+- [x] Backup automático de BD (servicio diario, retención de 7 días, S3 opcional)
+- [x] Status page pública en `/status`
+- [ ] Lanzamiento público — *depende del dominio y del servidor*
 
 #### Criterios de Salida
-- ✅ 99.9% uptime SLA
-- ✅ Alertas llegan en <2 min garantizado
-- ✅ Equipo on-call 24/7
-- ✅ 1000+ usuarios activos en primer mes
+- [ ] 99.9 % de uptime (medible solo en producción)
+- [ ] Alertas <2 min garantizadas (motor listo; falta medirlo en producción)
+- [ ] Equipo on-call
+- [ ] 1000+ usuarios activos el primer mes
 
 ---
 
-### **FASE 4: EXPANSIÓN (POST-MVP)**
-**Duración:** Abierta  
+### **FASE 4: EXPANSIÓN (POST-MVP)** — estructura creada
+**Duración:** abierta
 
-#### Roadmap (no bloqueante para MVP)
+- [x] Estructura `mobile/` y `ml/` con scaffold
 - [ ] Apps móviles (React Native / Flutter)
 - [ ] Integración con sistemas 911
 - [ ] Modelos ML predictivos
-- [ ] SMS notifications
-- [ ] Webhooks para terceros (Slack, Discord)
-- [ ] Soporte multi-idioma
-- [ ] Datos de impacto post-desastre (víctimas, daños)
+- [ ] SMS
+- [ ] Webhooks (Slack, Discord)
+- [ ] Multi-idioma
+- [ ] Datos de impacto post-desastre
 - [ ] Integración con gobiernos locales
 
 ---
@@ -377,6 +398,7 @@ AuditLog (trazabilidad)
 - **Rate limit:** Ilimitado (es pública)
 - **Formato:** GeoJSON
 - **Implementación:** Parser en Node.js, ingesta cada 5 min
+- **Estado:** ✅ implementado (`backend/src/services/ingestion.ts`)
 
 #### 2. NOAA Weather Alerts
 - **URL:** https://api.weather.gov/alerts/active
@@ -385,12 +407,14 @@ AuditLog (trazabilidad)
 - **Formato:** JSON
 - **Rate limit:** No especificado (público)
 - **Implementación:** Parser, filtrar por zona
+- **Estado:** ✅ implementado (`backend/src/services/ingestion.ts`)
 
 #### 3. NASA FIRMS (Fire Information for Resource Management System)
 - **URL:** https://firms.modaps.eosdis.nasa.gov/
 - **Datos:** Incendios detectados por satélite
 - **Latencia:** ~4 horas
 - **Implementación:** Ingesta diaria
+- **Estado:** ⏳ pendiente
 
 ### Fase 2+ (OPCIONALES)
 - **INGV** (Italia): Erupciones volcánicas
@@ -410,6 +434,8 @@ AuditLog (trazabilidad)
 | UX Score | >8/10 | Encuesta de 50 usuarios |
 | Uptime API | 99.5% | En 30 días |
 | Load | 1,000 usuarios simultáneos | Sin degradación |
+
+> **Estado a 2026-10-18:** cobertura de 4 tipos ✅ · motor de alertas ✅ (latencia real sin medir en producción) · disponibilidad, UX y load sin medir.
 
 ### Post-Lanzamiento (Fase 3+)
 - 100k usuarios en 6 meses
@@ -431,14 +457,14 @@ AuditLog (trazabilidad)
 ### Riesgo 2: Falsos positivos / eventos duplicados
 **Probabilidad:** MEDIA | **Impacto:** ALTO  
 **Mitigación:**
-- Deduplicación por geohash + timestamp
+- Deduplicación por `externalId + source` (implementada en la ingesta)
 - Panel de administración para marcar eventos como "falso"
 - Machine learning para filtrar ruido (Fase 2+)
 
 ### Riesgo 3: Escalabilidad en tiempo real
 **Probabilidad:** MEDIA | **Impacto:** ALTO  
 **Mitigación:**
-- Redis para cache de eventos
+- Redis para caché de eventos (planificado); hoy la mitigación es agrupación + mapa de calor + carga diferida del 3D
 - WebSockets solo para usuarios suscritos a zonas activas
 - CDN para assets estáticos
 
@@ -462,29 +488,36 @@ AuditLog (trazabilidad)
 ## 📋 Registro de Avance
 
 ### Estado General del Proyecto
-**Fase actual:** FASE 3 (Infraestructura de Producción) — Backend en Fase 2 (infraestructura base completada)
-**Porcentaje completado (infraestructura):**
-- Fase 1 (Frontend MVP): 100% ✅
-- Fase 2 (Backend infra): 100% ✅ | Fase 2 (Features): 0% ⏳
-- Fase 3 (Prod infra): 100% ✅ | Fase 3 (Deploy real): 0% ⏳
-- Fase 4 (Estructura): 100% ✅ | Fase 4 (Desarrollo): 0% ⏳
-**Última actualización:** 2026-10-15
+**Fase actual:** Fase 1 cerrando (motor de alertas) + Fase 2 en curso (UX y visualización ya entregadas)
 
-### Timeline Estimado
-| Fase | Inicio | Fin | Duración |
-|------|--------|-----|----------|
-| Fase 0 (Validación) | Semana 1 | Semana 2 | 2 semanas |
-| Fase 1 (MVP) | Semana 3 | Semana 10 | 8 semanas |
-| Fase 2 (Pulido) | Semana 11 | Semana 14 | 4 semanas |
-| Fase 3 (Go-Live) | Semana 15 | Semana 16 | 2 semanas |
-| **TOTAL** | - | - | **16 semanas (~4 meses)** |
+**Porcentaje completado:**
+- Fase 0 (Validación): ✅ 100 %
+- Fase 1 (MVP): 🚧 95 % — frontend, auth, ingesta, motor de alertas y bandeja listos; faltan email/SMS reales y Swagger
+- Fase 2 (Pulido): 🚧 40 % — UX y visualización hechas; faltan auditoría, load test e i18n
+- Fase 3 (Producción): 🚧 85 % — métricas, alertas, TLS, backups y status page listos; falta desplegar
+- Fase 4 (Expansión): 🚧 10 % — solo estructura
+
+**Última actualización:** 2026-10-18
+
+### Timeline Real
+
+| Fase | Plan original | Estado real |
+|------|---------------|-------------|
+| Fase 0 (Validación) | Semanas 1-2 | ✅ 2026-10-15 |
+| Fase 1 (MVP) | Semanas 3-10 | 🚧 2026-10-15 → 2026-10-18 (95 %) |
+| Fase 2 (Pulido) | Semanas 11-14 | 🚧 iniciada 2026-10-17 (UX y mapa) |
+| Fase 3 (Go-Live) | Semanas 15-16 | 🚧 2026-10-18 infraestructura lista; deploy pendiente |
+| **Total** | 16 semanas | **desviado**: MVP en 4 días, producción sin fecha |
 
 ### Hitos Clave
 - [x] **Hito 1:** Fase 0 documentada (validación, stack, plan) — 2026-10-15
-- [x] **Hito 2:** Backend infra con schema Prisma (6 modelos) + Docker + health check — 2026-10-15
-- [x] **Hito 3:** Frontend MVP con mapa Leaflet + Dashboard interactivo — 2026-10-15
-- [ ] **Hito 4:** Ingesta real USGS/NOAA + alertas en tiempo real — PENDIENTE (Fase 1)
-- [ ] **Hito 5:** MVP en producción (deploy real) — PENDIENTE (Fase 3)
+- [x] **Hito 2:** Backend con schema Prisma (6 modelos) + Docker + health check — 2026-10-15
+- [x] **Hito 3:** Frontend MVP con mapa + dashboard interactivo — 2026-10-15
+- [x] **Hito 4:** Ingesta real USGS + NOAA con deduplicación — 2026-10-17
+- [x] **Hito 5:** Rediseño «Centro de Mando» + mapa 2D/3D (capas, calor, edificios, clusters, timeline) — 2026-10-18
+- [x] **Hito 6:** Motor de alertas, bandeja y push por WebSocket — 2026-10-18 (email/SMS reales pendientes)
+- [x] **Hito 7:** Producción lista: métricas, dashboard, alertas, backups, TLS y status page — 2026-10-18
+- [ ] **Hito 8:** MVP en producción (deploy real) — PENDIENTE
 
 ---
 
@@ -501,6 +534,6 @@ AuditLog (trazabilidad)
 
 ---
 
-**Versión del documento:** 1.1 (actualizada)  
-**Próxima revisión:** Después de Fase 1 completa  
-**Historial de cambios:** v1.0 (diseño original) → v1.1 (alineado a implementación real: stack Fastify, modelo UserPreference, estado actualizado, contacto corregido)
+**Versión del documento:** 1.3  
+**Próxima revisión:** al desplegar en producción (Hito 7)  
+**Historial de cambios:** v1.0 (diseño original) → v1.1 (stack Fastify, modelo UserPreference, estado y contacto) → v1.2 (stack real con mapa 2D/3D sin API key, sección de visualización, fases y avance al 2026-10-18, deduplicación por `externalId + source`) → v1.3 (motor de alertas y bandeja entregados: Hito 6, Fase 1 al 95 %)

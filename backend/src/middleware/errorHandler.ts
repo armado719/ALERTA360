@@ -44,10 +44,15 @@ export function setupErrorHandler(fastify: FastifyInstance) {
 export function asyncHandler(
   fn: (request: FastifyRequest, reply: FastifyReply) => Promise<unknown>
 ) {
-  return (request: FastifyRequest, reply: FastifyReply) => {
-    fn(request, reply).catch((err) => {
+  // Importante: debe devolver la promesa. Si el wrapper no la devuelve,
+  // Fastify cree que el handler terminó sin responder y —cuando se usa como
+  // preHandler (requireAuth)— la petición se queda colgada para siempre.
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      return await fn(request, reply)
+    } catch (err) {
       logger.error(err, 'Unhandled error in route handler')
-      reply.send(err)
-    })
+      if (!reply.sent) reply.send(err)
+    }
   }
 }
