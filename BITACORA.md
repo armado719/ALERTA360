@@ -98,7 +98,38 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 
 ---
 
-### **2026-10-16 — Fixes de tipo y configuración Vite**
+### **2026-10-17 — Backend Best Practices (nodebestpractices aplicadas)**
+
+#### Cambios Realizados (Backend Refactor):
+- ✅ `src/utils/config.ts` (nuevo) — Config loader con validación Zod de env vars (PORT, JWT_SECRET, DATABASE_URL, CORS_ORIGIN, etc.). Falla fast fail si falta alguna variable crítica
+- ✅ `src/utils/logger.ts` (nuevo) — Logger Pino con pino-pretty (dev) / JSON (prod). Reemplaza todos los `console.log/error` del backend
+- ✅ `src/utils/prisma.ts` (nuevo) — Type augmentation para Fastify, declara `fastify.prisma: PrismaClient`
+- ✅ `src/middleware/errorHandler.ts` (nuevo) — Error handler centralizado (#2.4). `asyncHandler()` wrapper para que rejections en async routes sean capturados. Responses JSON consistentes con error/message/stack (dev)
+- ✅ `src/middleware/requireAuth.ts` (nuevo) — Auth middleware compartido (DRY). Antes estaba duplicado en `auth.ts` + `locations.ts`
+- ✅ `backend/src/index.ts` — Refactor: usa `config` (no process.env directo), `logger` (no console), `setupErrorHandler()`, registra `fastify.decorate('prisma', prisma)` singleton
+- ✅ `backend/src/routes/auth.ts` — Usa `fastify.prisma` (singleton), importa `requireAuth` de middleware compartido
+- ✅ `backend/src/routes/events.ts` — Elimina `new PrismaClient()` duplicado, usa `fastify.prisma`
+- ✅ `backend/src/routes/locations.ts` — Elimina `new PrismaClient()` + `requireAuth` local, usa shared middleware + `fastify.prisma`
+- ✅ `backend/src/services/ingestion.ts` — Reemplaza `console.log/error` por `logger`, usa `config` en vez de `process.env`, inyección de dependencia: `runIngestion(prisma)` y `startIngestScheduler(prisma)`
+
+#### Dependencias agregadas:
+- `pino` — Logger estructurado
+- `pino-pretty` — Pretty printing para desarrollo
+
+#### Mejoras específicas (nodebestpractices):
+1. **Error handling centralizado (#2.4)** — Un solo `setErrorHandler` para toda la app
+2. **Logging estructurado (#2.7)** — Pino con niveles (debug/info/error) y contexto
+3. **Config validation (#1.4)** — Zod valida todas las env vars al startup, fail-fast si falta JWT_SECRET o DATABASE_URL
+4. **Dependency injection** — PrismaClient singleton pasado como parámetro (no importado global)
+5. **DRY middleware** — requireAuth en un solo lugar
+
+#### Estado:
+- ✅ Type-check backend: 0 errores
+- ✅ Build backend: exitoso
+- ✅ Backend: corriendo en http://localhost:3000 (health check OK)
+- ✅ Commit 04e9c97 pushado a GitHub
+
+---
 
 #### Cambios Realizados:
 - ✅ `src/services/api.ts:4` — Reemplazado `process.env.VITE_API_URL` por `import.meta.env.VITE_API_URL` (convención Vite nativa, evita dependencia de `@types/node`)
