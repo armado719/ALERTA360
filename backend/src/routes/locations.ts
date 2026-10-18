@@ -1,19 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
-import { PrismaClient } from '@prisma/client'
 import { z } from 'zod'
-import '@fastify/jwt'
-
-const prisma = new PrismaClient()
-
-function requireAuth() {
-  return async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      await request.jwtVerify()
-    } catch (err) {
-      reply.send(err)
-    }
-  }
-}
+import { requireAuth } from '../middleware/requireAuth'
 
 const CreateLocationSchema = z.object({
   name: z.string().min(1),
@@ -24,23 +11,23 @@ const CreateLocationSchema = z.object({
 
 export async function registerLocationRoutes(fastify: FastifyInstance) {
   // GET /api/locations — all locations for current user
-  fastify.get('/locations', { preHandler: [requireAuth()] }, async (request: any, reply: FastifyReply) => {
-    const locations = await prisma.location.findMany({
-      where: { userId: request.user!.id },
+  fastify.get('/locations', { preHandler: requireAuth }, async (request: any, reply: FastifyReply) => {
+    const locations = await fastify.prisma.location.findMany({
+      where: { userId: request.user.id },
       orderBy: { createdAt: 'desc' },
     })
     return reply.send(locations)
   })
 
   // POST /api/locations — create a location
-  fastify.post('/locations', { preHandler: [requireAuth()] }, async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.post('/locations', { preHandler: requireAuth }, async (request: FastifyRequest, reply: FastifyReply) => {
     const result = CreateLocationSchema.safeParse(request.body)
     if (!result.success) {
       return reply.status(400).send({ error: 'Invalid input', details: result.error.errors })
     }
-    const { name, latitude, longitude, radiusKm } = result.data as any
+    const { name, latitude, longitude, radiusKm } = result.data
 
-    const location = await prisma.location.create({
+    const location = await fastify.prisma.location.create({
       data: {
         userId: (request as any).user.id,
         name,
@@ -53,10 +40,10 @@ export async function registerLocationRoutes(fastify: FastifyInstance) {
   })
 
   // DELETE /api/locations/:id
-  fastify.delete('/locations/:id', { preHandler: [requireAuth()] }, async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.delete('/locations/:id', { preHandler: requireAuth }, async (request: FastifyRequest, reply: FastifyReply) => {
     const { id } = request.params as { id: string }
 
-    const existing = await prisma.location.findUnique({
+    const existing = await fastify.prisma.location.findUnique({
       where: { id },
       select: { userId: true },
     })
@@ -67,7 +54,7 @@ export async function registerLocationRoutes(fastify: FastifyInstance) {
       return reply.status(403).send({ error: 'Forbidden' })
     }
 
-    await prisma.location.delete({ where: { id } })
+    await fastify.prisma.location.delete({ where: { id } })
     return reply.status(204).send()
   })
 }

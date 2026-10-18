@@ -2,7 +2,9 @@ import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
 import { PrismaClient } from '@prisma/client'
-import dotenv from 'dotenv'
+import { config } from './utils/config'
+import logger from './utils/logger'
+import { setupErrorHandler } from './middleware/errorHandler'
 import { registerAuthRoutes } from './routes/auth'
 import { registerEventRoutes } from './routes/events'
 import { registerLocationRoutes } from './routes/locations'
@@ -11,25 +13,40 @@ import { startIngestScheduler } from './services/ingestion'
 // Import type augmentations for Fastify plugins
 import '@fastify/jwt'
 
-dotenv.config()
+// ============================================================================
+// SINGLETON: One PrismaClient instance shared across all modules
+// nodebestpractices: avoid multiple DB pool instances per request
+// ============================================================================
+const prisma = new PrismaClient({
+  log: ['error', 'warn'],
+})
 
-const prisma = new PrismaClient()
-
+// ============================================================================
+// FASTIFY SERVER
+// ============================================================================
 const fastify = Fastify({
-  logger: true,
+  logger: false, // We use our own pino logger instance for consistent output
 })
 
 // ============================================================================
 // PLUGINS
 // ============================================================================
 await fastify.register(cors, {
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin: config.CORS_ORIGIN,
   credentials: true,
 })
 
 await fastify.register(jwt, {
-  secret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
+  secret: config.JWT_SECRET,
 })
+
+// Attach Prisma to Fastify instance (decorator pattern)
+fastify.decorate('prisma', prisma)
+
+// ============================================================================
+// ERROR HANDLING (centralized)
+// ============================================================================
+setupErrorHandler(fastify)
 
 // ============================================================================
 // HEALTH CHECK
@@ -48,17 +65,15 @@ await fastify.register(registerLocationRoutes, { prefix: '/api' })
 // ============================================================================
 // START SERVER
 // ============================================================================
-const PORT = Number(process.env.PORT) || 3000
-
 const start = async () => {
   try {
     // Start ingestion scheduler in background
-    startIngestScheduler()
-
-    await fastify.listen({ port: PORT, host: '0.0.0.0' })
-    console.log(`🚀 Server running on http://localhost:${PORT}`)
+    startIngestScheduler(prisma)
+    await fastify.listen({ port: config.PORT, host: '0.0.0.0' })
+    logger.info(`Server running on http://localhost:${config.PORT}`)
   } catch (err) {
-    fastify.log.error(err)
+    logger.error(err, 'Failed to start server')
+    await prisma.$disconnect()
     process.exit(1)
   }
 }
@@ -67,6 +82,7 @@ start()
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
+  logger.info('Shutting down gracefully...')
   await prisma.$disconnect()
   await fastify.close()
   process.exit(0)

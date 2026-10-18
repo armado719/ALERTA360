@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client'
 import axios from 'axios'
-
-const prisma = new PrismaClient()
+import logger from '../utils/logger'
+import { config } from '../utils/config'
 
 // ============================================================================
 // USGS Earthquake API
@@ -12,6 +12,7 @@ interface USGSFeature {
     place: string
     time: number
     url: string
+    mag: number | null
   }
   geometry: {
     coordinates: [number, number, number]
@@ -30,15 +31,15 @@ async function fetchUSGS(): Promise<USGSResponse['features']> {
     )
     return res.data.features
   } catch (error) {
-    console.error('USGS fetch failed:', error)
+    logger.error({ err: error }, 'USGS fetch failed')
     return []
   }
 }
 
 function mapUSGS(feature: USGSFeature) {
   const coords = feature.geometry.coordinates
-  // USGS magnitudes come in the URL/properties; use a heuristic for severity
-  const magnitude = parseFloat(feature.properties.url.split('/')[0] || '0') || 0
+  // USGS magnitudes come in properties.mag
+  const magnitude = feature.properties.mag || 0
   let severity = 'low'
   if (magnitude >= 6) severity = 'critical'
   else if (magnitude >= 5) severity = 'high'
@@ -71,6 +72,7 @@ interface NOAAAlertProperties {
   starts: string
   ends?: string
   sender: string
+  areaDesc: string
 }
 
 interface NOAAAlert {
@@ -92,13 +94,12 @@ async function fetchNOAA(): Promise<NOAAAlert[]> {
     const features = Array.isArray(res.data.features) ? res.data.features : [res.data.features]
     return features
   } catch (error) {
-    console.error('NOAA fetch failed:', error)
+    logger.error({ err: error }, 'NOAA fetch failed')
     return []
   }
 }
 
 function mapNOAA(alert: NOAAAlert) {
-  // NOAA doesn't always have lat/lon; use center of affected area if available
   const areaDesc = alert.properties || {}
   const severityMap: Record<string, string> = {
     'Extreme': 'critical',
@@ -108,12 +109,16 @@ function mapNOAA(alert: NOAAAlert) {
   }
   const severity = severityMap[areaDesc.severity || ''] || 'medium'
 
+  // Parse centroid from areaDesc if available
+  // Note: NOAA provides areaDesc as text; would need geocoder for exact coords
+
   return {
     type: mapNOAAType(areaDesc.event),
     source: 'noaa',
     externalId: alert.id,
-    latitude: 0, // NOAA provides areaDesc; would need geocoder for exact coords
+    latitude: 0, // NOAA provides areaDesc text; would need geocoder for exact coords
     longitude: 0,
+    magnitude: null,
     title: areaDesc.event,
     description: areaDesc.description || areaDesc.headline || '',
     severity,
@@ -134,12 +139,13 @@ function mapNOAAType(event: string): string {
 }
 
 // ============================================================================
-// Ingestion job
+// Ingestion cycle
 // ============================================================================
 let ingestCounter = 0
 
-export async function runIngestion(): Promise<{ usgs: number; noaa: number }> {
-  console.log(`[INGESTION] Starting cycle #${++ingestCounter} at ${new Date().toISOString()}`)
+export async function runIngestion(prisma: PrismaClient): Promise<{ usgs: number; noaa: number }> {
+  const cycle = ++ingestCounter
+  logger.info(`[INGESTION] Starting cycle #${cycle}`)
 
   const usgsEvents = await fetchUSGS()
   let usgsInserted = 0
@@ -162,7 +168,7 @@ export async function runIngestion(): Promise<{ usgs: number; noaa: number }> {
       })
       usgsInserted++
     } catch (err) {
-      console.error('Error inserting USGS event:', err)
+      logger.error({ err, eventId: feature.id }, 'Error inserting USGS event')
     }
   }
 
@@ -187,29 +193,33 @@ export async function runIngestion(): Promise<{ usgs: number; noaa: number }> {
       })
       noaaInserted++
     } catch (err) {
-      console.error('Error inserting NOAA event:', err)
+      logger.error({ err, alertId: alert.id }, 'Error inserting NOAA event')
     }
   }
 
-  console.log(`[INGESTION] Done. USGS: ${usgsInserted} new, NOAA: ${noaaInserted} new`)
+  const total = usgsInserted + noaaInserted
+  logger.info(`[INGESTION] Cycle #${cycle} complete — USGS: ${usgsInserted} new, NOAA: ${noaaInserted} new (${total} total)`)
   return { usgs: usgsInserted, noaa: noaaInserted }
 }
 
 // Schedule: every 5 minutes (300 seconds)
-export function startIngestScheduler() {
-  if (process.env.USGS_ENABLED !== 'true' && process.env.NOAA_ENABLED !== 'true') {
-    console.log('[INGESTION] Skipping scheduler — data sources disabled')
+export function startIngestScheduler(prisma: PrismaClient) {
+  const usgsEnabled = config.USGS_ENABLED === 'true'
+  const noaaEnabled = config.NOAA_ENABLED === 'true'
+
+  if (!usgsEnabled && !noaaEnabled) {
+    logger.info('[INGESTION] Scheduler skipped — data sources disabled')
     return
   }
 
-  const intervalMs = parseInt(process.env.INGEST_INTERVAL || '300000', 10)
+  const intervalMs = config.INGEST_INTERVAL
 
   // Run immediately on startup, then every intervalMs
-  runIngestion().catch(console.error)
+  runIngestion(prisma).catch(err => logger.error({ err }, 'Initial ingestion failed'))
 
   setInterval(() => {
-    runIngestion().catch(console.error)
+    runIngestion(prisma).catch(err => logger.error({ err }, 'Scheduled ingestion failed'))
   }, intervalMs)
 
-  console.log(`[INGESTION] Scheduler started — interval: ${intervalMs / 1000}s`)
+  logger.info(`[INGESTION] Scheduler started — interval: ${intervalMs / 1000}s`, )
 }

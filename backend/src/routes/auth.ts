@@ -1,10 +1,8 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
-import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcrypt'
 import { z } from 'zod'
 import '@fastify/jwt'
-
-const prisma = new PrismaClient()
+import { requireAuth } from '../middleware/requireAuth'
 
 const RegisterSchema = z.object({
   email: z.string().email(),
@@ -17,17 +15,6 @@ const LoginSchema = z.object({
   password: z.string(),
 })
 
-// Reusable preHandler for JWT auth
-function requireAuth() {
-  return async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      await request.jwtVerify()
-    } catch (err) {
-      reply.send(err)
-    }
-  }
-}
-
 export async function registerAuthRoutes(fastify: FastifyInstance) {
   // POST /auth/register
   fastify.post('/register', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -37,13 +24,13 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
     }
     const { email, username, password } = result.data
 
-    const existing = await prisma.user.findUnique({ where: { email } })
+    const existing = await fastify.prisma.user.findUnique({ where: { email } })
     if (existing) {
       return reply.status(409).send({ error: 'User already exists' })
     }
 
     const passwordHash = await bcrypt.hash(password, 10)
-    const user = await prisma.user.create({
+    const user = await fastify.prisma.user.create({
       data: {
         email,
         username,
@@ -64,7 +51,7 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
     }
     const { email, password } = result.data
 
-    const user = await prisma.user.findUnique({ where: { email } })
+    const user = await fastify.prisma.user.findUnique({ where: { email } })
     if (!user) {
       return reply.status(401).send({ error: 'Invalid credentials' })
     }
@@ -83,8 +70,8 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
   })
 
   // GET /auth/me
-  fastify.get('/me', { preHandler: [requireAuth()] }, async (request: any, reply: FastifyReply) => {
-    const user = await prisma.user.findUnique({
+  fastify.get('/me', { preHandler: requireAuth }, async (request: any, reply: FastifyReply) => {
+    const user = await fastify.prisma.user.findUnique({
       where: { id: request.user.id },
       include: { preferences: true, locations: true },
     })

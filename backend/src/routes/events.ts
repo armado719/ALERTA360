@@ -1,8 +1,5 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
-import { PrismaClient } from '@prisma/client'
 import { z } from 'zod'
-
-const prisma = new PrismaClient()
 
 const EventsQuerySchema = z.object({
   types: z.string().optional(),
@@ -39,7 +36,7 @@ export async function registerEventRoutes(fastify: FastifyInstance) {
       where.type = { in: types.split(',') }
     }
 
-    const events = await prisma.disasterEvent.findMany({
+    const events = await fastify.prisma.disasterEvent.findMany({
       where,
       orderBy: { occurredAt: 'desc' },
     })
@@ -68,7 +65,7 @@ export async function registerEventRoutes(fastify: FastifyInstance) {
   fastify.get('/events/:id', async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
     const { id } = request.params
 
-    const event = await prisma.disasterEvent.findUnique({
+    const event = await fastify.prisma.disasterEvent.findUnique({
       where: { id },
     })
 
