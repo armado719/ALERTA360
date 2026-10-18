@@ -1,7 +1,7 @@
 # 📋 BITÁCORA DE CAMBIOS — ALERTA360
 
 **Proyecto:** ALERTA360 — Plataforma Global de Alertas Tempranas para Desastres Naturales  
-**Última actualización:** 2026-10-15  
+**Última actualización:** 2026-10-17  
 **Versión actual:** 0.1.0 (MVP) + Fase 2 Infraestructura + Fase 3 Infraestructura + Fase 4 Estructura
 
 ---
@@ -14,9 +14,41 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 
 ## 🗓️ Historial de Cambios
 
-### **2026-10-16 — Fase 2 Features + UI Premium Implementadas**
+### **2026-10-17 — UI Premium con Chart.js, Lucide, Framer Motion**
 
-#### Cambios Realizados (Backend):
+#### Cambios Realizados (Frontend):
+- ✅ `src/components/Sparkline.tsx` (nuevo) — Componentes Chart.js: `Sparkline` (línea con gradiente semi-transparente, tension 0.4) y `DonutChart` (donut con cortina 65%, tooltips dark theme). Registra LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, ArcElement
+- ✅ `src/components/Dashboard.tsx` — Premium UI overhaul:
+  - **Chart.js sparklines** reemplazan SVGs estáticos en stat cards (gráficos de línea con fill gradient + tension)
+  - **Donut chart** de distribución por tipo de evento (labels, colores por severidad, tooltips glass-dark)
+  - **Lucide React icons** reemplazan todos los emoji (Search, Filter, Clock, AlertTriangle, Zap, Thermometer, Wind)
+  - **Framer Motion**: motion.button con whileHover/whileTap, AnimatePresence para detalle de evento, layoutId para transiciones fluidas, staggered animations en lista de eventos
+  - Buscador con Search icon y focus ring cyan
+  - Time range selector con select estilizado glass-dark
+  - Event cards con severity progress bar, estilo de frontera por severidad, efectos de hover
+  - Live clock en footer (actualiza cada 30s)
+- ✅ `src/components/Header.tsx` — Premium header:
+  - **Lucide icons** reemplazan todos los emoji (Search, Bell, Settings, LogOut, User)
+  - **Framer Motion**: motion.header con entrance animation, motion.button con micro-interacciones (whileHover scale, whileTap), icon scale en hover
+  - Reloj vivo con separador de fecha/hora
+  - Badge de notificaciones (12) con red dot
+  - User profile avatar con gradiente
+- ✅ `src/components/Map.tsx` — Mapa premium:
+  - **Lucide icons** en controles (Search, Target) reemplazan emoji (🔍, 🎯)
+  - **Framer Motion** en botones de control (whileHover scale 1.08, whileTap scale 0.95)
+
+#### Dependencias agregadas:
+- `chart.js@4.5.1` + `react-chartjs-2@5.3.1` — Gráficos profesionales
+- `framer-motion@14.3.0` — Micro-interacciones y animaciones fluidas
+- `lucide-react@1.59.0` — Iconografía lineal minimalista
+
+#### Estado:
+- ✅ Type-check: 0 errores
+- ✅ Build: 2453 modules, 693.76 kB (226.87 kB gzipped)
+- ✅ Dev server: HTTP 200 en http://localhost:5173
+- ✅ Commit 67810a9 pushado a GitHub
+
+---
 - ✅ `backend/src/routes/auth.ts` (nuevo) — Rutas de autenticación: POST /auth/register, POST /auth/login, GET /auth/me. JWT + bcrypt + Zod validation
 - ✅ `backend/src/routes/events.ts` (nuevo) — GET /api/events (con filtros types/timeRange), GET /api/events/:id. Sirve eventos desde la base de datos
 - ✅ `backend/src/routes/locations.ts` (nuevo) — CRUD completo: GET /locations, POST /locations, DELETE /locations/:id. Auth JWT requerido
