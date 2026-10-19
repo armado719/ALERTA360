@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { WifiOff, X } from 'lucide-react'
 import Map from './components/Map'
+import LocationPanel from './components/LocationPanel'
 import Dashboard from './components/Dashboard'
 import Header from './components/Header'
 import AuthModal from './components/AuthModal'
@@ -12,9 +13,13 @@ import { DisasterEvent } from './types'
 import type { TimelineState } from './components/Map'
 import {
   fetchDisasterEvents,
+  fetchLocations,
+  createLocation,
+  deleteLocation as deleteLocationApi,
   getMe,
   setAuthToken,
   type AuthUser,
+  type Location,
   type ServerNotification,
 } from './services/api'
 import { DEMO_EVENTS } from './data/demoEvents'
@@ -39,6 +44,8 @@ function App() {
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [showErrorToast, setShowErrorToast] = useState(true)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [showLocationPanel, setShowLocationPanel] = useState(false)
+  const [locations, setLocations] = useState<Location[]>([])
 
   /* ---------- Auth ---------- */
   // Alertas del motor de matching: bandeja + push en vivo por WebSocket
@@ -78,6 +85,30 @@ function App() {
     }
     initAuth()
   }, [])
+
+  /* ---------- Zonas de alerta del usuario ---------- */
+  useEffect(() => {
+    if (!user) return
+    fetchLocations()
+      .then(setLocations)
+      .catch(() => setLocations([]))
+  }, [user])
+
+  const saveLocation = async (loc: {
+    name: string
+    latitude: number
+    longitude: number
+    radiusKm: number
+  }) => {
+    await createLocation(loc)
+    const updated = await fetchLocations()
+    setLocations(updated)
+  }
+
+  const deleteLocation = async (id: string) => {
+    await deleteLocationApi(id)
+    setLocations((prev) => prev.filter((l) => l.id !== id))
+  }
 
   /* ---------- Eventos ---------- */
   const loadEvents = useCallback(async () => {
@@ -174,6 +205,8 @@ function App() {
         unread={alerts.unread}
         onNotificationsClick={() => setNotificationsOpen(open => !open)}
         notificationsOpen={notificationsOpen}
+        onLocationClick={() => setShowLocationPanel(true)}
+        locationsCount={locations.length}
       />
 
       <NotificationsPanel
@@ -198,6 +231,7 @@ function App() {
               onSelectEvent={setSelectedEvent}
               loading={loading}
               timeline={timeline}
+              locations={locations}
               onTimelineChange={(next) => setTimeline((t) => ({ ...t, ...next }))}
             />
             <EventDetailCard event={selectedEvent} onClose={() => setSelectedEvent(null)} />
@@ -244,6 +278,14 @@ function App() {
           </div>
         </aside>
       </div>
+
+      <LocationPanel
+        isOpen={showLocationPanel}
+        onClose={() => setShowLocationPanel(false)}
+        locations={locations}
+        onSave={saveLocation}
+        onDelete={deleteLocation}
+      />
 
       <AuthModal
         isOpen={showAuthModal}

@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  haversineKm,
-  highestSeverity,
-  isNullIsland,
-  isSeverity,
-  severityRank,
-} from '../src/utils/geo'
+import { haversineKm, highestSeverity, isNullIsland, isSeverity, polygonCentroid, severityRank } from '../src/utils/geo'
 
 describe('haversineKm', () => {
   it('devuelve 0 para el mismo punto', () => {
@@ -67,5 +61,45 @@ describe('isNullIsland', () => {
   it('no descarta coordenadas reales cercanas al ecuador', () => {
     const quito = { latitude: -0.18, longitude: -78.47 }
     expect(isNullIsland(quito)).toBe(false)
+  })
+})
+
+describe('polygonCentroid', () => {
+  it('calcula el centroide de un triángulo', () => {
+    // [lon, lat]: (0,0), (2,0), (0,2) → centroide (2/3, 2/3)
+    const coords: [number, number][] = [
+      [0, 0],
+      [2, 0],
+      [0, 2],
+    ]
+    const c = polygonCentroid(coords)
+    expect(c.latitude).toBeCloseTo(2 / 3, 5)
+    expect(c.longitude).toBeCloseTo(2 / 3, 5)
+  })
+
+  it('calcula el centroide de un cuadrado', () => {
+    // (0,0), (2,0), (2,2), (0,2) → centroide (1, 1)
+    const coords: [number, number][] = [
+      [0, 0],
+      [2, 0],
+      [2, 2],
+      [0, 2],
+    ]
+    const c = polygonCentroid(coords)
+    expect(c.latitude).toBeCloseTo(1, 5)
+    expect(c.longitude).toBeCloseTo(1, 5)
+  })
+
+  it('funciona con coordenadas geográficas reales', () => {
+    // Bounding box de Colombia aproximado
+    const coords: [number, number][] = [
+      [-80, 12],
+      [-75, 12],
+      [-75, 4],
+      [-80, 4],
+    ]
+    const c = polygonCentroid(coords)
+    expect(c.latitude).toBeCloseTo(8, 1)
+    expect(c.longitude).toBeCloseTo(-77.5, 1)
   })
 })

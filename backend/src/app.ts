@@ -11,6 +11,8 @@ import { registerEventRoutes } from './routes/events'
 import { registerLocationRoutes } from './routes/locations'
 import { registerNotificationRoutes } from './routes/notifications'
 import { registerPreferenceRoutes } from './routes/preferences'
+import { registerSourcesRoutes } from './routes/sources'
+import { registerGeocodeRoutes } from './routes/geocode'
 import { registerRealtimeRoutes } from './realtime/ws'
 import { registerDocsRoutes } from './routes/docs'
 import { AlertHub } from './realtime/hub'
@@ -141,6 +143,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(registerLocationRoutes, { prefix: '/api' })
   await app.register(registerNotificationRoutes, { prefix: '/api' })
   await app.register(registerPreferenceRoutes, { prefix: '/api' })
+  await app.register(registerSourcesRoutes, { prefix: '/api' })
+  await app.register(registerGeocodeRoutes, { prefix: '/api' })
 
   // WebSocket de alertas en vivo
   await registerRealtimeRoutes(app)

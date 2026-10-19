@@ -123,6 +123,32 @@ export async function deleteLocation(id: string): Promise<void> {
   await api.delete(`/locations/${id}`)
 }
 
+// Geocodificación — backend usa Nominatim con caché y rate limit
+export interface GeocodeLocation {
+  name: string
+  lat: number
+  lon: number
+  display_name: string
+  type?: string
+}
+
+export async function searchLocations(query: string): Promise<GeocodeLocation[]> {
+  const response = await api.get('/geocode/search', { params: { q: query } })
+  return response.data
+}
+
+export interface ReverseGeocodeResult {
+  name: string
+  display_name: string
+  lat: number
+  lon: number
+}
+
+export async function reverseGeocode(lat: number, lon: number): Promise<ReverseGeocodeResult> {
+  const response = await api.get('/geocode/reverse', { params: { lat, lon } })
+  return response.data
+}
+
 // Alerts
 export async function subscribeToAlerts(locationId: string): Promise<void> {
   await api.post('/notifications/subscribe', { locationId })

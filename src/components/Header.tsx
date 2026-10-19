@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Search, Bell, Settings, LogOut, User, Globe2 } from 'lucide-react'
+import { Search, Bell, Settings, LogOut, User, Globe2, MapPin } from 'lucide-react'
 import { AuthUser } from '../services/api'
 
 interface HeaderProps {
@@ -12,6 +12,8 @@ interface HeaderProps {
   unread?: number
   onNotificationsClick?: () => void
   notificationsOpen?: boolean
+  onLocationClick?: () => void
+  locationsCount?: number
 }
 
 export default function Header({
@@ -22,6 +24,8 @@ export default function Header({
   unread = 0,
   onNotificationsClick,
   notificationsOpen = false,
+  onLocationClick,
+  locationsCount = 0,
 }: HeaderProps) {
   const [now, setNow] = useState(() => new Date())
 
@@ -95,6 +99,15 @@ export default function Header({
 
         <IconButton title="Buscar eventos" hoverColor="cyan">
           <Search className="w-[17px] h-[17px]" />
+        </IconButton>
+
+        <IconButton
+          title="Zonas de alerta"
+          hoverColor="violet"
+          onClick={onLocationClick}
+          badge={locationsCount && locationsCount > 0 ? locationsCount : undefined}
+        >
+          <MapPin className="w-[17px] h-[17px]" />
         </IconButton>
 
         <IconButton

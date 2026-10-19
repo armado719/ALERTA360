@@ -2,6 +2,8 @@ import { PrismaClient } from '@prisma/client'
 import axios from 'axios'
 import logger from '../utils/logger'
 import { config } from '../utils/config'
+import { canFetch, registerSource, reportFailure, reportSuccess } from './sources/health'
+import { isNullIsland, polygonCentroid } from '../utils/geo'
 import {
   activeEventsGauge,
   ingestionCycleDuration,
@@ -9,6 +11,13 @@ import {
   ingestionEventsTotal,
   markIngestionSuccess,
 } from '../plugins/metrics'
+
+// Registramos todas las fuentes para que aparezcan en /api/sources/health
+// aun cuando aún no hayan tenido su primer fetch.
+registerSource('usgs')
+registerSource('noaa')
+registerSource('nasa_eonet')
+registerSource('gdacs')
 
 // ============================================================================
 // USGS Earthquake API
@@ -31,21 +40,18 @@ interface USGSResponse {
 }
 
 async function fetchUSGS(): Promise<USGSResponse['features']> {
-  try {
-    const res = await axios.get<USGSResponse>(
-      'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson',
-      {
-        timeout: 10000,
-        headers: {
-          'User-Agent': 'ALERTA360 (arc.fullstack30@gmail.com)',
-        },
-      }
-    )
-    return res.data.features
-  } catch (error) {
-    logger.error({ err: error }, 'USGS fetch failed')
-    return []
-  }
+  // Lanza en error: el circuit breaker del ciclo de ingesta decide si
+  // saltar la fuente o registrar el fallo. Un [] vacío significa éxito.
+  const res = await axios.get<USGSResponse>(
+    'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson',
+    {
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'ALERTA360 (arc.fullstack30@gmail.com)',
+      },
+    }
+  )
+  return res.data.features ?? []
 }
 
 function mapUSGS(feature: USGSFeature) {
@@ -75,7 +81,7 @@ function mapUSGS(feature: USGSFeature) {
 // ============================================================================
 // NOAA Weather Alerts API
 // ============================================================================
-interface NOAAAlertProperties {
+export interface NOAAAlertProperties {
   id: string
   event: string
   headline: string
@@ -87,8 +93,14 @@ interface NOAAAlertProperties {
   areaDesc: string
 }
 
-interface NOAAAlert {
+export interface NOAAGeometry {
+  type: 'Point' | 'Polygon' | 'MultiPolygon' | string
+  coordinates: unknown
+}
+
+export interface NOAAAlert {
   id: string
+  geometry: NOAAGeometry | null
   properties: NOAAAlertProperties
 }
 
@@ -97,51 +109,92 @@ interface NOAAResponse {
 }
 
 async function fetchNOAA(): Promise<NOAAAlert[]> {
-  try {
-    const res = await axios.get<NOAAResponse>(
-      'https://api.weather.gov/alerts/active',
-      {
-        timeout: 10000,
-        headers: {
-          'User-Agent': 'ALERTA360 (arc.fullstack30@gmail.com)',
-          'Accept': 'application/geo+json',
-        },
-      }
-    )
-    // NOAA sometimes returns single object; normalize to array
-    const features = Array.isArray(res.data.features) ? res.data.features : [res.data.features]
-    return features
-  } catch (error) {
-    logger.error({ err: error }, 'NOAA fetch failed')
-    return []
-  }
+  // Lanza en error: el circuit breaker del ciclo de ingesta lo catcha.
+  const res = await axios.get<NOAAResponse>(
+    'https://api.weather.gov/alerts/active',
+    {
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'ALERTA360 (arc.fullstack30@gmail.com)',
+        'Accept': 'application/geo+json',
+      },
+    }
+  )
+  // NOAA sometimes returns single object; normalize to array
+  const features = Array.isArray(res.data.features) ? res.data.features : [res.data.features]
+  return features
 }
 
-function mapNOAA(alert: NOAAAlert) {
-  const areaDesc = alert.properties || {}
-  const severityMap: Record<string, string> = {
-    'Extreme': 'critical',
-    'Severe': 'high',
-    'Moderate': 'medium',
-    'Minor': 'low',
-  }
-  const severity = severityMap[areaDesc.severity || ''] || 'medium'
+/**
+ * Extrae lat/lon de la geometría de una alerta NOAA.
+ * - Point: coordinates = [lon, lat]
+ * - Polygon: coordinates[0] = anillo exterior → centroide geométrico
+ * - MultiPolygon: coordinates[0][0] = anillo del primer polígono
+ */
+function extractNOAACoords(
+  geometry: NOAAGeometry | null
+): { latitude: number; longitude: number } | null {
+  if (!geometry || geometry.coordinates == null) return null
+  const { type, coordinates } = geometry
 
-  // Parse centroid from areaDesc if available
-  // Note: NOAA provides areaDesc as text; would need geocoder for exact coords
+  if (type === 'Point' && Array.isArray(coordinates)) {
+    const [lon, lat] = coordinates as [number, number]
+    if (typeof lon === 'number' && typeof lat === 'number') {
+      return { latitude: lat, longitude: lon }
+    }
+  }
+
+  if (type === 'Polygon' && Array.isArray(coordinates)) {
+    const ring = (coordinates as number[][][])[0]
+    if (!ring || ring.length === 0) return null
+    const points = ring.map((c) => [c[0], c[1]] as [number, number])
+    return polygonCentroid(points)
+  }
+
+  if (type === 'MultiPolygon' && Array.isArray(coordinates)) {
+    const ring = (coordinates as number[][][][])[0]?.[0]
+    if (!ring || ring.length === 0) return null
+    const points = ring.map((c) => [c[0], c[1]] as [number, number])
+    return polygonCentroid(points)
+  }
+
+  return null
+}
+
+export function mapNOAA(alert: NOAAAlert) {
+  const props = alert.properties || {}
+  const severityMap: Record<string, string> = {
+    Extreme: 'critical',
+    Severe: 'high',
+    Moderate: 'medium',
+    Minor: 'low',
+  }
+  const severity = severityMap[props.severity || ''] || 'medium'
+
+  // Extraer coordenadas reales de geometry. Si NOAA no provee geometría
+  // (solo texto de área), descartamos en lugar de emitir (0,0) que el
+  // matching tendría que filtrar después.
+  const coords = extractNOAACoords(alert.geometry)
+  if (!coords) return null
+
+  // Validar rango y descartar coordenadas nulas/inválidas
+  if (Number.isNaN(coords.latitude) || Number.isNaN(coords.longitude)) return null
+  if (coords.latitude < -90 || coords.latitude > 90) return null
+  if (coords.longitude < -180 || coords.longitude > 180) return null
+  if (isNullIsland(coords)) return null
 
   return {
-    type: mapNOAAType(areaDesc.event),
+    type: mapNOAAType(props.event),
     source: 'noaa',
     externalId: alert.id,
-    latitude: 0, // NOAA provides areaDesc text; would need geocoder for exact coords
-    longitude: 0,
+    latitude: coords.latitude,
+    longitude: coords.longitude,
     magnitude: null,
-    title: areaDesc.event,
-    description: areaDesc.description || areaDesc.headline || '',
+    title: props.event,
+    description: props.description || props.headline || '',
     severity,
-    occurredAt: new Date(areaDesc.starts),
-    rawData: { headline: areaDesc.headline, region: areaDesc.sender },
+    occurredAt: new Date(props.starts),
+    rawData: { headline: props.headline, region: props.sender },
   }
 }
 
@@ -238,19 +291,25 @@ function mapEONETSeverity(categoryId: string, magnitude?: number): string {
 }
 
 async function fetchEONET(): Promise<EONETEvent[]> {
-  try {
-    const res = await axios.get<EONETResponse>('https://eonet.gsfc.nasa.gov/api/v3/events', {
-      params: { days: 30, limit: 100, status: 'open' },
-      timeout: 10000,
-      headers: {
-        'User-Agent': 'ALERTA360 (arc.fullstack30@gmail.com)',
-      },
-    })
-    return res.data.events || []
-  } catch (error) {
-    logger.error({ err: error }, 'EONET fetch failed')
-    return []
+  // Lanza en error: el circuit breaker del ciclo de ingesta lo catcha.
+  const params: Record<string, string | number> = {
+    days: config.EONET_DAYS,
+    limit: 100,
+    status: 'open',
   }
+  // bbox opcional: limita la consulta a la región de interés.
+  // Vacío = cobertura mundial.
+  if (config.EONET_BBOX) {
+    params.bbox = config.EONET_BBOX
+  }
+  const res = await axios.get<EONETResponse>('https://eonet.gsfc.nasa.gov/api/v3/events', {
+    params,
+    timeout: 10000,
+    headers: {
+      'User-Agent': 'ALERTA360 (arc.fullstack30@gmail.com)',
+    },
+  })
+  return res.data.events ?? []
 }
 
 /**
@@ -301,6 +360,136 @@ export function mapEONET(event: EONETEvent) {
 }
 
 // ============================================================================
+// GDACS (Global Alert for Disaster) API
+// ============================================================================
+// https://www.gdacs.org/gdacsapi/gdacsapi.php
+// Eventos multi-riesgo globales: ciclones (TC), inundaciones (FL),
+// sismos (EQ), volcanes (VO), incendios (WF), sequías (DR). Sin clave API.
+//
+// NOTA: GDACS usa [longitude, latitude] (GeoJSON) en geometry.coordinates.
+
+interface GDACSProperties {
+  eventid: string
+  eventtype: string
+  alertlevel: string
+  name: string
+  date: string
+  description?: string
+  severity?: number
+}
+
+interface GDACSGeometry {
+  type: string
+  coordinates: [number, number] | [number, number, number] | [number, number, number, number, number][]
+}
+
+export interface GDACSFeature {
+  type: string
+  properties: GDACSProperties
+  geometry: GDACSGeometry
+}
+
+interface GDACSResponse {
+  type: string
+  features: GDACSFeature[]
+}
+
+/** GDACS eventtype → tipo ALERTA360 */
+const GDACS_TYPE_MAP: Record<string, string> = {
+  EQ: 'earthquake',
+  TC: 'storm',
+  FL: 'flood',
+  VO: 'volcanic',
+  WF: 'wildfire',
+  DR: 'drought',
+}
+
+/** GDACS alertlevel → severidad ALERTA360 (green→low, orange→medium, red→high) */
+const GDACS_SEVERITY_MAP: Record<string, string> = {
+  Green: 'low',
+  Orange: 'medium',
+  // GDACS no usa "Red" como nivel; usa severidad numérica cuando alertlevel = "Red"
+  Red: 'high',
+}
+
+/**
+ * GDACS no siempre incluye alertlevel (p. ej. para sismos).
+ * Usa la severidad numérica como fallback.
+ */
+function mapGDACSSeverity(eventtype: string, severityNum?: number): string {
+  // Sismos: severidad ≈ magnitud del evento (mayor = más severo)
+  if (eventtype === 'EQ') {
+    if (severityNum && severityNum >= 6) return 'high'
+    if (severityNum && severityNum >= 5) return 'high'
+    return 'medium'
+  }
+  // Para otros tipos, si no hay alertlevel, usa medium como default conservador
+  return 'medium'
+}
+
+async function fetchGDACS(): Promise<GDACSFeature[]> {
+  // Lanza en error: el circuit breaker del ciclo de ingesta lo catcha.
+  const res = await axios.get<GDACSResponse>('https://www.gdacs.org/gdacsapi/gdacsapi.php', {
+    params: {
+      eventlist: 'ALL',
+      days: config.GDACS_DAYS,
+    },
+    timeout: 10000,
+    headers: {
+      'User-Agent': 'ALERTA360 (arc.fullstack30@gmail.com)',
+    },
+  })
+  return res.data?.features ?? []
+}
+
+/**
+ * Mapea un evento GDACS a la estructura de ALERTA360.
+ * Filtra sismos (los cubre USGS con mayor precisión) si ya vienen de EONET,
+ * pero los mantiene si no hay duplicado. Retorna null si no se puede mapear.
+ */
+export function mapGDACS(feature: GDACSFeature) {
+  const props = feature.properties
+  const eventType = props.eventtype
+  const mappedType = GDACS_TYPE_MAP[eventType]
+  if (!mappedType) return null
+
+  // GDACS: sismos ya vienen de USGS con mayor precisión → los filtramos
+  // para evitar duplicados. Si no hay USGS, se pueden habilitar.
+  if (eventType === 'EQ') return null
+
+  if (!feature.geometry) return null
+  const coords = feature.geometry.coordinates
+  // Coordenadas lineales [lon, lat]
+  if (!Array.isArray(coords) || coords.length < 2) return null
+  const lon = Array.isArray(coords[0]) ? coords[0][0] : coords[0]
+  const lat = Array.isArray(coords[0]) ? coords[0][1] : coords[1]
+  if (typeof lon !== 'number' || typeof lat !== 'number') return null
+
+  const severity = GDACS_SEVERITY_MAP[props.alertlevel] ?? mapGDACSSeverity(eventType, props.severity)
+  const occurredAt = props.date ? new Date(props.date) : new Date()
+  const title = props.name || `${mappedType} event`
+
+  return {
+    type: mappedType,
+    source: 'gdacs' as const,
+    externalId: props.eventid,
+    latitude: lat,
+    longitude: lon,
+    magnitude: props.severity ?? null,
+    intensity: eventType === 'EQ' ? props.severity : null,
+    title,
+    description: props.description || title,
+    severity,
+    occurredAt,
+    rawData: {
+      alertlevel: props.alertlevel,
+      eventtype: eventType,
+      date: props.date,
+    },
+  }
+}
+
+// ============================================================================
 // Ingestion cycle
 // ============================================================================
 let ingestCounter = 0
@@ -335,30 +524,33 @@ async function notifyHooks(hooks: IngestionHooks | undefined, event: Parameters<
 export async function runIngestion(
   prisma: PrismaClient,
   hooks?: IngestionHooks
-): Promise<{ usgs: number; noaa: number; eonet: number }> {
+): Promise<{ usgs: number; noaa: number; eonet: number; gdacs: number }> {
   const cycle = ++ingestCounter
   const startedAt = Date.now()
   logger.info(`[INGESTION] Starting cycle #${cycle}`)
 
-  const usgsEvents = await fetchUSGS()
+  // ---- USGS ----
+  let usgsEvents: USGSResponse['features'] = []
+  if (canFetch('usgs')) {
+    try {
+      usgsEvents = await fetchUSGS()
+      reportSuccess('usgs')
+    } catch (err) {
+      reportFailure('usgs', err)
+    }
+  } else {
+    logger.warn('ⓘ [INGESTION] USGS skipped — circuit breaker abierto')
+  }
   let usgsInserted = 0
-
   for (const feature of usgsEvents) {
     try {
       const mapped = mapUSGS(feature)
       if (!mapped) continue
-
       const existing = await prisma.disasterEvent.findFirst({
         where: { externalId: mapped.externalId, source: 'usgs' },
       })
       if (existing) continue // deduplicate
-
-      const created = await prisma.disasterEvent.create({
-        data: {
-          ...mapped,
-          isActive: true,
-        },
-      })
+      const created = await prisma.disasterEvent.create({ data: { ...mapped, isActive: true } })
       usgsInserted++
       await notifyHooks(hooks, created)
     } catch (err) {
@@ -367,25 +559,28 @@ export async function runIngestion(
     }
   }
 
-  const noaaEvents = await fetchNOAA()
+  // ---- NOAA ----
+  let noaaEvents: NOAAAlert[] = []
+  if (canFetch('noaa')) {
+    try {
+      noaaEvents = await fetchNOAA()
+      reportSuccess('noaa')
+    } catch (err) {
+      reportFailure('noaa', err)
+    }
+  } else {
+    logger.warn('ⓘ [INGESTION] NOAA skipped — circuit breaker abierto')
+  }
   let noaaInserted = 0
-
   for (const alert of noaaEvents) {
     try {
       const mapped = mapNOAA(alert)
       if (!mapped) continue
-
       const existing = await prisma.disasterEvent.findFirst({
         where: { externalId: mapped.externalId, source: 'noaa' },
       })
       if (existing) continue
-
-      const created = await prisma.disasterEvent.create({
-        data: {
-          ...mapped,
-          isActive: true,
-        },
-      })
+      const created = await prisma.disasterEvent.create({ data: { ...mapped, isActive: true } })
       noaaInserted++
       await notifyHooks(hooks, created)
     } catch (err) {
@@ -394,25 +589,28 @@ export async function runIngestion(
     }
   }
 
-  const eonetEvents = await fetchEONET()
+  // ---- NASA EONET ----
+  let eonetEvents: EONETEvent[] = []
+  if (canFetch('nasa_eonet')) {
+    try {
+      eonetEvents = await fetchEONET()
+      reportSuccess('nasa_eonet')
+    } catch (err) {
+      reportFailure('nasa_eonet', err)
+    }
+  } else {
+    logger.warn('ⓘ [INGESTION] EONET skipped — circuit breaker abierto')
+  }
   let eonetInserted = 0
-
   for (const event of eonetEvents) {
     try {
       const mapped = mapEONET(event)
       if (!mapped) continue
-
       const existing = await prisma.disasterEvent.findFirst({
         where: { externalId: mapped.externalId, source: 'nasa_eonet' },
       })
       if (existing) continue // deduplicate
-
-      const created = await prisma.disasterEvent.create({
-        data: {
-          ...mapped,
-          isActive: true,
-        },
-      })
+      const created = await prisma.disasterEvent.create({ data: { ...mapped, isActive: true } })
       eonetInserted++
       await notifyHooks(hooks, created)
     } catch (err) {
@@ -421,23 +619,57 @@ export async function runIngestion(
     }
   }
 
-  const total = usgsInserted + noaaInserted + eonetInserted
+  // ---- GDACS ----
+  let gdacsEvents: GDACSFeature[] = []
+  if (canFetch('gdacs')) {
+    try {
+      gdacsEvents = await fetchGDACS()
+      reportSuccess('gdacs')
+    } catch (err) {
+      reportFailure('gdacs', err)
+    }
+  } else {
+    logger.warn('ⓘ [INGESTION] GDACS skipped — circuit breaker abierto')
+  }
+  let gdacsInserted = 0
+  for (const feature of gdacsEvents) {
+    try {
+      const mapped = mapGDACS(feature)
+      if (!mapped) continue
+      const existing = await prisma.disasterEvent.findFirst({
+        where: { externalId: mapped.externalId, source: 'gdacs' },
+      })
+      if (existing) continue // deduplicate
+      const created = await prisma.disasterEvent.create({ data: { ...mapped, isActive: true } })
+      gdacsInserted++
+      await notifyHooks(hooks, created)
+    } catch (err) {
+      ingestionErrorsTotal.inc({ source: 'gdacs' })
+      logger.error({ err, eventId: feature.properties?.eventid }, 'Error inserting GDACS event')
+    }
+  }
+
+  const total = usgsInserted + noaaInserted + eonetInserted + gdacsInserted
 
   // ---- métricas ----
   if (usgsInserted > 0) ingestionEventsTotal.inc({ source: 'usgs' }, usgsInserted)
   if (noaaInserted > 0) ingestionEventsTotal.inc({ source: 'noaa' }, noaaInserted)
   if (eonetInserted > 0) ingestionEventsTotal.inc({ source: 'nasa_eonet' }, eonetInserted)
+  if (gdacsInserted > 0) ingestionEventsTotal.inc({ source: 'gdacs' }, gdacsInserted)
   ingestionCycleDuration.set((Date.now() - startedAt) / 1000)
   markIngestionSuccess()
 
   try {
     activeEventsGauge.set(await prisma.disasterEvent.count({ where: { isActive: true } }))
   } catch (err) {
-    logger.warn({ err }, '[INGESTION] No se pudo contar los eventos activos')
+    logger.warn({ err }, 'ⓘ [INGESTION] No se pudo contar los eventos activos')
   }
 
-  logger.info(`[INGESTION] Cycle #${cycle} complete — USGS: ${usgsInserted} new, NOAA: ${noaaInserted} new, EONET: ${eonetInserted} new (${total} total)`)
-  return { usgs: usgsInserted, noaa: noaaInserted, eonet: eonetInserted }
+  logger.info(
+    `[INGESTION] Cycle #${cycle} complete — USGS: ${usgsInserted} new, ` +
+      `NOAA: ${noaaInserted} new, EONET: ${eonetInserted} new, GDACS: ${gdacsInserted} new (${total} total)`
+  )
+  return { usgs: usgsInserted, noaa: noaaInserted, eonet: eonetInserted, gdacs: gdacsInserted }
 }
 
 // Schedule: every INGEST_INTERVAL ms
@@ -446,6 +678,7 @@ export function startIngestScheduler(prisma: PrismaClient, hooks?: IngestionHook
     usgs: config.USGS_ENABLED === 'true',
     noaa: config.NOAA_ENABLED === 'true',
     eonet: config.EONET_ENABLED === 'true',
+    gdacs: config.GDACS_ENABLED === 'true',
   }
   const anyEnabled = Object.values(enabledFlags).some(Boolean)
 

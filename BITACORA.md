@@ -1,8 +1,8 @@
 # 📋 BITÁCORA DE CAMBIOS — ALERTA360
 
 **Proyecto:** ALERTA360 — Plataforma Global de Alertas Tempranas para Desastres Naturales  
-**Última actualización:** 2026-10-18  
-**Versión actual:** 0.4.0 (MVP Fases 1-3 + producción + motor de alertas Fase 4) — Fase 4 implementada y tests pasando ✓
+**Última actualización:** 2026-10-19  
+**Versión actual:** 0.4.1 (MVP Fases 1-3 + producción + motor de alertas Fase 4 + geolocalización/zonas) — Motor de alertas validado con test de integración e2e ✓
 
 ---
 
@@ -14,7 +14,42 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 
 ## 🗓️ Historial de Cambios
 
-### **2026-10-17 — UI Premium SerQ Glassmorphism + Map Tile Fix + Alerta360 UI Redesign + Map3D 3D Integration**
+### **2026-10-19 — Geolocalización, zonas de alerta + validación e2e del motor de alertas**
+#### Cambios Realizados:
+- ✅ **`src/components/LocationPanel.tsx`** (nuevo) — Modal de zonas de alerta: buscador con autocomplete (Nominatim vía `/api/geocode/search`, debounce 500 ms), geolocalización GPS del navegador (`navigator.geolocation` + `reverseGeocode`), slider radio 1–1000 km, guardar/borrar zonas (POST/DELETE `/api/locations`), lista de zonas existentes con contador.
+- ✅ **`src/components/Header.tsx`** — Botón MapPin de zonas con badge de contador (`locationsCount`).
+- ✅ **`src/components/Map.tsx`** — `LocationCircles` dibuja el círculo de cobertimiento (cian, `L.circle`) de cada zona; prop `locations?: Location[]`.
+- ✅ **`src/App.tsx`** — Estado `locations` + `showLocationPanel`, carga vía `fetchLocations`, handlers `saveLocation`/`deleteLocation` (refetch).
+- ✅ **`backend/test/alert-engine.int.test.ts`** (nuevo, 4 tests) — Integración: `buildApp({ prisma: fakePrisma })` + **hub WS REAL** + `fakeSocket` (`readyState:1`/`send`). Valida: AlertPayload push al WS, dedup BD (`created:0` en re-matching), push sin WS conectado (persiste notificación), y sin match fuera del radio.
+- ✅ Motor de alertas (`services/matching.ts`) validado e2e: crear zona → ingesta → `matchEvent` → `hub.sendToUser` → WS → cliente.
+
+#### Estado:
+- ✅ TSC backend: 0 errores (`tsc --noEmit`)
+- ✅ TSC frontend: 0 errores (`tsc --noEmit`)
+- ✅ Tests backend: 52/52 pasando (`vitest run`) — 17 matching + 4 alert-engine-int + 31 previos
+- ✅ Build frontend: OK (2464 módulos, `vite build` exit 0)
+- ⚠️ El motor hace push al WS en cada matching (stateless); la dedup es solo en BD (`createMany skipDuplicates` + `@@unique`). El cliente (`useAlerts.ts`) dedupa visualmente por `eventId` al refrescar la bandeja. El email/SMS dispatch (`notifications/dispatch.ts`) es fire-and-forget y puede loggear ruido si el mock Prisma no devuelve el evento completo — aceptado: nunca rompe la ingesta.
+
+---
+
+### **2026-10-19 — Fuente GDACS + Circuit Breaker (Bloque 0 del plan de fuentes globales)**
+#### Cambios Realizados:
+- ✅ **`backend/src/services/sources/types.ts`** (nuevo) — Contrato compartido `MappedEvent` / `Source` + helpers `isNullIsland` / `isValidPoint`.
+- ✅ **`backend/src/services/sources/health.ts`** (nuevo) — Circuit breaker: 3 fallos consecutivos → `down` + cooldown 5 min, freshness 30 min → `degraded`; exponible vía `/api/sources/health`.
+- ✅ **`backend/src/routes/sources.ts`** (nuevo) — Endpoint `GET /api/sources/health` con `complete`, `sources[]`, `intervalMs`.
+- ✅ **`backend/src/app.ts`** — Registra la ruta sources; CORS mejorado.
+- ✅ **`backend/src/services/ingestion.ts`** — Refactorizado: fetchers ahora **lanzan** errores (no catch silencioso que confunde "caído" con "0 eventos"), circuit breaker en el ciclo principal (`canFetch` / `reportSuccess` / `reportFailure`), GDACS (fetch + `mapGDACS` + métricas), EONET con `EONET_BBOX` y `EONET_DAYS` configurables.
+- ✅ **`backend/src/utils/config.ts`** — Vars `GDACS_ENABLED`, `GDACS_DAYS`, `EONET_BBOX`, `EONET_DAYS`.
+- ✅ **`backend/.env.example`** — Documentadas vars GDACS / EONET / INGEST_INTERVAL.
+- ✅ **`backend/test/sources.test.ts`** (nuevo) — 16 tests: circuit breaker (open / close / cooldown) + `mapGDACS`.
+
+#### Estado:
+- ✅ TypeScript backend: 0 errores (`tsc --noEmit`)
+- ✅ Tests: 90/90 pasando (`vitest run`) — incluye 16 nuevos
+- ✅ Build backend: exitoso (`npm run build`)
+- ⏳ `getSourceStatus` retorna siempre el status; el cooldown se verifica via `canFetch` (no reloj fake en tests)
+
+
 #### Cambios Realizados:
 - ✅ **Map tile fix** — Reemplazados tiles CARTO (que ahora requieren API key) por ESRI Dark Gray Canvas (gratis, verificado HTTP 200): `https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`
 - ✅ **`tailwind.config.js`** — Paleta SerQ premium aplicada: `bg #04060b`, `txt #e9eef8`, `orange #ff5b1f/#ff8a3d`, `blue #2fa8ff`, `green #25d07d`, `red #ff4d4d`. Severidades actualizadas: critical→red, high→orange, medium→blue, low→green. Glows actualizados a la paleta SerQ.
@@ -599,7 +634,7 @@ ALERTA360/
 
 ---
 
-**Última actualización:** 2026-10-18  
-**Versión de la bitácora:** 1.1  
+**Última actualización:** 2026-10-19  
+**Versión de la bitácora:** 1.2  
 **Status:** ✅ Activo
 

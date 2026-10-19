@@ -25,6 +25,12 @@ const ConfigSchema = z.object({
   USGS_ENABLED: z.string().default('true'),
   NOAA_ENABLED: z.string().default('true'),
   EONET_ENABLED: z.string().default('true'),
+  EONET_BBOX: z.string().optional().default(''),
+  EONET_DAYS: z.coerce.number().default(30),
+  GDACS_ENABLED: z.string().default('true'),
+  GDACS_DAYS: z.coerce.number().default(30),
+  GEOCODE_ENABLED: z.string().default('true'),
+  NOMINATIM_URL: z.string().default('https://nominatim.openstreetmap.org'),
   INGEST_INTERVAL: z.coerce.number().default(300000),
 })
 

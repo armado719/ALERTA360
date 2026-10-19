@@ -67,3 +67,34 @@ export function haversineKm(a: Coordinates, b: Coordinates): number {
 export function isNullIsland({ latitude, longitude }: Coordinates): boolean {
   return Math.abs(latitude) < 0.01 && Math.abs(longitude) < 0.01
 }
+
+/**
+ * Calcula el centroide geométrico (teorema del polígono) de un anillo
+ * GeoJSON (array de [lon, lat]). Usado para alertas NOAA con `Polygon`.
+ *
+ * Fórmula del centroide geométrico — preciso para polígonos convexos
+ * y no convexos. NO es el centroide de los vértices (incorrecto).
+ */
+export function polygonCentroid(coords: [number, number][]): Coordinates {
+  let signedArea = 0
+  let cx = 0
+  let cy = 0
+
+  for (let i = 0; i < coords.length; i++) {
+    const j = (i + 1) % coords.length
+    const [xi, yi] = coords[i] // lon, lat
+    const [xj, yj] = coords[j]
+    const cross = xi * yj - xj * yi
+    signedArea += cross
+    cx += (xi + xj) * cross
+    cy += (yi + yj) * cross
+  }
+
+  signedArea *= 0.5
+  if (signedArea === 0) return { latitude: coords[0][1], longitude: coords[0][0] }
+
+  cx /= 6 * signedArea
+  cy /= 6 * signedArea
+
+  return { latitude: cy, longitude: cx }
+}

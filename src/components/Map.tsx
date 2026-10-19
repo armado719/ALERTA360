@@ -5,6 +5,7 @@ import { MapContainer, TileLayer, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet.heat'
 import { DisasterEvent } from '../types'
+import { Location } from '../services/api'
 
 const Map3D = lazy(() => import('./Map3D'))
 
@@ -21,6 +22,7 @@ interface MapProps {
   loading: boolean
   timeline: TimelineState
   onTimelineChange: (next: Partial<TimelineState>) => void
+  locations?: Location[]
 }
 
 /* ------------------------------------------------------------------ */
@@ -328,6 +330,26 @@ function HeatLayer({ events, visible }: { events: DisasterEvent[]; visible: bool
   return null
 }
 
+/** Círculos de cobertura (radiusKm) para las zonas registradas del usuario. */
+function LocationCircles({ locations }: { locations: Location[] }) {
+  const map = useMap()
+  useEffect(() => {
+    const group = L.featureGroup().addTo(map)
+    for (const loc of locations) {
+      L.circle([loc.latitude, loc.longitude], {
+        radius: loc.radiusKm * 1000, // km → metros
+        color: '#22d3ee',
+        weight: 1.5,
+        opacity: 0.55,
+        fillColor: '#22d3ee',
+        fillOpacity: 0.12,
+      }).addTo(group)
+    }
+    return () => { map.removeLayer(group) }
+  }, [map, locations])
+  return null
+}
+
 /* ------------------------------------------------------------------ */
 /*  Mapa                                                             */
 /* ------------------------------------------------------------------ */
@@ -337,6 +359,7 @@ export default function Map({
   onSelectEvent,
   loading,
   timeline,
+  locations,
   onTimelineChange,
 }: MapProps) {
   const mapRef = useRef<L.Map | null>(null)
@@ -414,6 +437,8 @@ export default function Map({
             onSelectEvent={onSelectEvent}
             heatmap={heatmap}
           />
+
+          {locations && locations.length > 0 && <LocationCircles locations={locations} />}
 
         </MapContainer>
       )}
