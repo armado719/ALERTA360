@@ -43,7 +43,22 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:-https://alerta360.com}
       USGS_ENABLED: ${USGS_ENABLED:-true}
       NOAA_ENABLED: ${NOAA_ENABLED:-true}
-      INGEST_INTERVAL: ${INGEST_INTERVAL:-300000}
+      INGEST_INTERVAL: ${INGEST_INTERVAL:-120000}
+      # Fuentes globales
+      EONET_ENABLED: ${EONET_ENABLED:-true}
+      EONET_BBOX: ${EONET_BBOX:-}
+      EONET_DAYS: ${EONET_DAYS:-30}
+      GDACS_ENABLED: ${GDACS_ENABLED:-true}
+      GDACS_DAYS: ${GDACS_DAYS:-30}
+      GEOCODE_ENABLED: ${GEOCODE_ENABLED:-true}
+      NOMINATIM_URL: ${NOMINATIM_URL:-https://nominatim.openstreetmap.org}
+      # Entrega de alertas (vacío = el canal queda en `skipped`)
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-alertas@alerta360.com}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
+      DOCS_ENABLED: ${DOCS_ENABLED:-true}
     depends_on:
       db:
         condition: service_healthy

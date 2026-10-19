@@ -1,4 +1,16 @@
-export type DisasterType = 'earthquake' | 'storm' | 'flood' | 'rain' | 'landslide' | 'volcanic' | 'hurricane'
+export type DisasterType =
+  | 'earthquake'
+  | 'storm'
+  | 'flood'
+  | 'rain'
+  | 'landslide'
+  | 'volcanic'
+  | 'hurricane'
+  | 'wildfire'
+  | 'drought'
+  | 'heatwave'
+  | 'snow'
+  | 'dust'
 
 export interface DisasterEvent {
   id: string

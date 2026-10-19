@@ -13,6 +13,9 @@ import {
   CloudRain,
   Mountain,
   Flame,
+  Snowflake,
+  Droplet,
+  ThermometerSun,
 } from 'lucide-react'
 import { DisasterEvent, DisasterType } from '../types'
 import { Sparkline, DonutChart } from './Sparkline'
@@ -37,6 +40,12 @@ const DISASTER_TYPES: { type: DisasterType; label: string; short: string }[] = [
   { type: 'rain', label: 'Lluvia', short: 'Lluvia' },
   { type: 'landslide', label: 'Avalanchas', short: 'Avalan.' },
   { type: 'volcanic', label: 'Volcánicos', short: 'Volcán' },
+  { type: 'hurricane', label: 'Huracanes', short: 'Huracán' },
+  { type: 'wildfire', label: 'Incendios', short: 'Incendios' },
+  { type: 'drought', label: 'Sequía', short: 'Sequía' },
+  { type: 'heatwave', label: 'Ola de calor', short: 'Calor' },
+  { type: 'snow', label: 'Nieve', short: 'Nieve' },
+  { type: 'dust', label: 'Dust/Haze', short: 'Aire' },
 ]
 
 const SEVERITY = {
@@ -53,6 +62,12 @@ const TYPE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   rain: CloudRain,
   landslide: Mountain,
   volcanic: Flame,
+  hurricane: Wind,
+  wildfire: Flame,
+  drought: Droplet,
+  heatwave: ThermometerSun,
+  snow: Snowflake,
+  dust: Wind,
 }
 
 function TypeIcon({ type, className }: { type: string; className?: string }) {

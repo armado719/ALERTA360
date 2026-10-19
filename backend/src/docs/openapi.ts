@@ -24,7 +24,7 @@ const eventSchema = {
     id: { type: 'string', format: 'uuid' },
     type: {
       type: 'string',
-      enum: ['earthquake', 'storm', 'flood', 'rain', 'landslide', 'volcanic', 'hurricane'],
+      enum: ['earthquake', 'storm', 'flood', 'rain', 'landslide', 'volcanic', 'hurricane', 'wildfire', 'drought', 'heatwave', 'snow', 'dust'],
     },
     title: { type: 'string', example: 'Sismo cerca de Bogotá' },
     description: { type: 'string' },
@@ -76,7 +76,7 @@ const preferencesSchema = {
       type: 'array',
       items: {
         type: 'string',
-        enum: ['earthquake', 'storm', 'flood', 'rain', 'landslide', 'volcanic', 'hurricane'],
+        enum: ['earthquake', 'storm', 'flood', 'rain', 'landslide', 'volcanic', 'hurricane', 'wildfire', 'drought', 'heatwave', 'snow', 'dust'],
       },
     },
     minSeverity: severity,

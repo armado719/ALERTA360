@@ -157,6 +157,150 @@ function mapNOAAType(event: string): string {
 }
 
 // ============================================================================
+// NASA EONET API
+// ============================================================================
+// https://eonet.gsfc.nasa.gov/api/v3/events
+// Eventos naturales abiertos: inundaciones, deslizamientos, incendios,
+// tormentas, volcanes, sequías, extremos térmicos. Sin clave API, público.
+//
+// NOTA DE MAPEO: EONET usa coordenadas [longitude, latitude] (GeoJSON)
+// y un campo "geometry" (singular, array) en lugar de "geometries".
+export interface EONETCategory {
+  id: string
+  title: string
+}
+
+export interface EONETGeometry {
+  date: string
+  type: string
+  coordinates: [number, number] | [number, number, number]
+  magnitudeValue?: number
+  magnitudeUnit?: string
+}
+
+export interface EONETEvent {
+  id: string
+  title: string
+  description: string | null
+  link: string
+  closed: string | null
+  categories: EONETCategory[]
+  sources: { id: string; url: string }[]
+  geometry: EONETGeometry[]
+}
+
+interface EONETResponse {
+  events: EONETEvent[]
+}
+
+/**
+ * Mapea las categorías EONET a los tipos de ALERTA360.
+ * Solo se incluyen categorías que representan desastres naturales
+ * relevantes para alertas tempranas (se excluyen waterColor, manmade).
+ */
+const EONET_CATEGORY_MAP: Record<string, string> = {
+  floods: 'flood',
+  landslides: 'landslide',
+  severeStorms: 'storm',
+  volcanoes: 'volcanic',
+  wildfires: 'wildfire',
+  drought: 'drought',
+  tempExtremes: 'heatwave',
+  earthquakes: 'earthquake',
+  dustHaze: 'dust',
+  snow: 'snow',
+}
+
+/**
+ * Asigna severidad basada en la categoría y magnitud disponible.
+ * Para tormentas, usa la velocidad del viento (kts) como proxy de intensidad.
+ * El resto se mapea por tipo — EONET no expone alert levels.
+ */
+function mapEONETSeverity(categoryId: string, magnitude?: number): string {
+  if (categoryId === 'severeStorms' && magnitude !== undefined) {
+    if (magnitude >= 64) return 'critical'
+    if (magnitude >= 34) return 'high'
+    return 'medium'
+  }
+  const defaults: Record<string, string> = {
+    floods: 'medium',
+    landslides: 'high',
+    wildfires: 'medium',
+    volcanoes: 'medium',
+    severeStorms: 'medium',
+    tempExtremes: 'medium',
+    drought: 'low',
+    earthquakes: 'low',
+    dustHaze: 'low',
+    snow: 'low',
+  }
+  return defaults[categoryId] ?? 'low'
+}
+
+async function fetchEONET(): Promise<EONETEvent[]> {
+  try {
+    const res = await axios.get<EONETResponse>('https://eonet.gsfc.nasa.gov/api/v3/events', {
+      params: { days: 30, limit: 100, status: 'open' },
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'ALERTA360 (arc.fullstack30@gmail.com)',
+      },
+    })
+    return res.data.events || []
+  } catch (error) {
+    logger.error({ err: error }, 'EONET fetch failed')
+    return []
+  }
+}
+
+/**
+ * Mapea un evento EONET a la estructura de ALERTA360.
+ * Usa la geometría más reciente (última del array) como posición actual.
+ * Retorna `null` si la categoría no está en el mapa o no hay geometría.
+ */
+export function mapEONET(event: EONETEvent) {
+  const categoryId = event.categories[0]?.id
+  const mappedType = EONET_CATEGORY_MAP[categoryId]
+  if (!mappedType) return null
+
+  if (!event.geometry || event.geometry.length === 0) return null
+  const latest = event.geometry[event.geometry.length - 1]
+  const coords = latest.coordinates
+  if (coords.length < 2) return null
+
+  const magnitude = latest.magnitudeValue
+  const severity = mapEONETSeverity(categoryId, magnitude)
+  const occurredAt = new Date(latest.date)
+  const sourceName = event.sources?.[0]?.id ?? 'NASA EONET'
+  const title = event.title || `${mappedType} event`
+
+  // Para terremotos EONET no reporta magnitud; deja null y deja que
+  // USGS aporte el valor con mayor precisión.
+  const isEarthquake = mappedType === 'earthquake'
+
+  return {
+    type: mappedType,
+    source: 'nasa_eonet',
+    externalId: event.id,
+    latitude: coords[1],
+    longitude: coords[0],
+    magnitude: isEarthquake ? (magnitude ?? null) : null,
+    intensity: isEarthquake ? Math.round(magnitude || 5) : null,
+    title,
+    description: event.description || `${title} (${sourceName})`,
+    severity,
+    occurredAt,
+    rawData: {
+      link: event.link,
+      categories: event.categories.map(c => c.id),
+      source: sourceName,
+      magnitudeValue: magnitude,
+      magnitudeUnit: latest.magnitudeUnit,
+    },
+  }
+}
+
+// ============================================================================
 // Ingestion cycle
 // ============================================================================
 let ingestCounter = 0
@@ -191,7 +335,7 @@ async function notifyHooks(hooks: IngestionHooks | undefined, event: Parameters<
 export async function runIngestion(
   prisma: PrismaClient,
   hooks?: IngestionHooks
-): Promise<{ usgs: number; noaa: number }> {
+): Promise<{ usgs: number; noaa: number; eonet: number }> {
   const cycle = ++ingestCounter
   const startedAt = Date.now()
   logger.info(`[INGESTION] Starting cycle #${cycle}`)
@@ -250,11 +394,39 @@ export async function runIngestion(
     }
   }
 
-  const total = usgsInserted + noaaInserted
+  const eonetEvents = await fetchEONET()
+  let eonetInserted = 0
+
+  for (const event of eonetEvents) {
+    try {
+      const mapped = mapEONET(event)
+      if (!mapped) continue
+
+      const existing = await prisma.disasterEvent.findFirst({
+        where: { externalId: mapped.externalId, source: 'nasa_eonet' },
+      })
+      if (existing) continue // deduplicate
+
+      const created = await prisma.disasterEvent.create({
+        data: {
+          ...mapped,
+          isActive: true,
+        },
+      })
+      eonetInserted++
+      await notifyHooks(hooks, created)
+    } catch (err) {
+      ingestionErrorsTotal.inc({ source: 'nasa_eonet' })
+      logger.error({ err, eventId: event.id }, 'Error inserting EONET event')
+    }
+  }
+
+  const total = usgsInserted + noaaInserted + eonetInserted
 
   // ---- métricas ----
   if (usgsInserted > 0) ingestionEventsTotal.inc({ source: 'usgs' }, usgsInserted)
   if (noaaInserted > 0) ingestionEventsTotal.inc({ source: 'noaa' }, noaaInserted)
+  if (eonetInserted > 0) ingestionEventsTotal.inc({ source: 'nasa_eonet' }, eonetInserted)
   ingestionCycleDuration.set((Date.now() - startedAt) / 1000)
   markIngestionSuccess()
 
@@ -264,19 +436,28 @@ export async function runIngestion(
     logger.warn({ err }, '[INGESTION] No se pudo contar los eventos activos')
   }
 
-  logger.info(`[INGESTION] Cycle #${cycle} complete — USGS: ${usgsInserted} new, NOAA: ${noaaInserted} new (${total} total)`)
-  return { usgs: usgsInserted, noaa: noaaInserted }
+  logger.info(`[INGESTION] Cycle #${cycle} complete — USGS: ${usgsInserted} new, NOAA: ${noaaInserted} new, EONET: ${eonetInserted} new (${total} total)`)
+  return { usgs: usgsInserted, noaa: noaaInserted, eonet: eonetInserted }
 }
 
-// Schedule: every 5 minutes (300 seconds)
+// Schedule: every INGEST_INTERVAL ms
 export function startIngestScheduler(prisma: PrismaClient, hooks?: IngestionHooks) {
-  const usgsEnabled = config.USGS_ENABLED === 'true'
-  const noaaEnabled = config.NOAA_ENABLED === 'true'
+  const enabledFlags = {
+    usgs: config.USGS_ENABLED === 'true',
+    noaa: config.NOAA_ENABLED === 'true',
+    eonet: config.EONET_ENABLED === 'true',
+  }
+  const anyEnabled = Object.values(enabledFlags).some(Boolean)
 
-  if (!usgsEnabled && !noaaEnabled) {
+  if (!anyEnabled) {
     logger.info('[INGESTION] Scheduler skipped — data sources disabled')
     return
   }
+
+  const enabledList = Object.entries(enabledFlags)
+    .filter(([, v]) => v)
+    .map(([k]) => k)
+    .join(', ')
 
   const intervalMs = config.INGEST_INTERVAL
 
@@ -287,5 +468,5 @@ export function startIngestScheduler(prisma: PrismaClient, hooks?: IngestionHook
     runIngestion(prisma, hooks).catch(err => logger.error({ err }, 'Scheduled ingestion failed'))
   }, intervalMs)
 
-  logger.info(`[INGESTION] Scheduler started — interval: ${intervalMs / 1000}s`)
+  logger.info(`[INGESTION] Scheduler started — enabled: ${enabledList}, interval: ${intervalMs / 1000}s`)
 }

@@ -12,22 +12,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       - name: Type check
         run: npm run type-check
-      
+
       - name: Build
         run: npm run build
-      
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -36,35 +36,38 @@ jobs:
           retention-days: 7
 
   backend:
-    name: Backend Build & Type Check
+    name: Backend Build & Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-        with:
           cache-dependency-path: backend/package-lock.json
-      
+
       - name: Install dependencies
         working-directory: backend
         run: npm ci
-      
+
       - name: Generate Prisma Client
         working-directory: backend
         run: npx prisma generate
-      
+
       - name: Type check
         working-directory: backend
         run: npm run type-check
-      
+
+      - name: Run tests
+        working-directory: backend
+        run: npm test
+
       - name: Build
         working-directory: backend
         run: npm run build
-      
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -78,10 +81,10 @@ jobs:
     needs: [frontend, backend]
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      
+
       - name: Build backend image
         uses: docker/build-push-action@v5
         with:
@@ -90,4 +93,3 @@ jobs:
           tags: alerta360-backend:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
-EOF

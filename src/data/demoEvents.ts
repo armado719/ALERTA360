@@ -47,6 +47,11 @@ const TITLES: Record<DisasterType, string[]> = {
   landslide: ['Deslizamiento de tierra — {z}', 'Alud en ladera — {z}', 'Socavón reportado — {z}'],
   volcanic: ['Actividad volcánica — {z}', 'Ceniza en suspensión — {z}', 'Tremor volcánico — {z}'],
   hurricane: ['Huracán categoría {v} — {z}', 'Trayectoria ciclónica — {z}', 'Alerta por huracán — {z}'],
+  wildfire: ['Incendio forestal — {z}', 'Foco de calor activo — {z}', 'Combate de incendios — {z}'],
+  drought: ['Sequía severa — {z}', 'Advertencia de sequía — {z}', 'Récord de sequía — {z}'],
+  heatwave: ['Ola de calor — {z}', 'Temperaturas extremas — {z}', 'Alerta de calor — {z}'],
+  snow: ['Tormenta de nieve — {z}', 'Avalancha de nieve — {z}', 'Acumulación de nieve — {z}'],
+  dust: ['Tormenta de polvo — {z}', 'Alerta de calidad del aire — {z}', 'Humedad extrema — {z}'],
 }
 
 const SOURCES = ['USGS', 'NOAA', 'NASA EONET', 'SGC', 'CENAPRED', 'GDACS']

@@ -24,6 +24,7 @@ const ConfigSchema = z.object({
 
   USGS_ENABLED: z.string().default('true'),
   NOAA_ENABLED: z.string().default('true'),
+  EONET_ENABLED: z.string().default('true'),
   INGEST_INTERVAL: z.coerce.number().default(300000),
 })
 
