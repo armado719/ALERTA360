@@ -100,6 +100,8 @@ export interface Location {
   latitude: number
   longitude: number
   radiusKm: number
+  shape?: 'circle' | 'polygon'
+  polygon?: { type: 'Polygon'; coordinates: [number, number][][] }
   createdAt: string
   updatedAt: string
 }
@@ -114,6 +116,8 @@ export async function createLocation(location: {
   latitude: number
   longitude: number
   radiusKm: number
+  shape?: 'circle' | 'polygon'
+  polygon?: { type: 'Polygon'; coordinates: [number, number][][] }
 }): Promise<Location> {
   const response = await api.post('/locations', location)
   return response.data

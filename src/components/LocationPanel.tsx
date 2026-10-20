@@ -30,6 +30,8 @@ interface LocationPanelProps {
     latitude: number
     longitude: number
     radiusKm: number
+    shape?: 'circle' | 'polygon'
+    polygon?: { type: 'Polygon'; coordinates: [number, number][][] }
   }) => Promise<void>
   onDelete: (id: string) => Promise<void>
 }
@@ -53,6 +55,9 @@ export default function LocationPanel({
   const [isSearching, setIsSearching] = useState(false)
   const [selected, setSelected] = useState<SearchResult | null>(null)
   const [radiusKm, setRadiusKm] = useState(50)
+  const [shape, setShape] = useState<'circle' | 'polygon'>('circle')
+  const [polygonPoints, setPolygonPoints] = useState<[number, number][]>([])
+  const [coordInput, setCoordInput] = useState('')
   const [isGpsLoading, setIsGpsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -130,14 +135,35 @@ export default function LocationPanel({
     setIsSaving(true)
     setError(null)
     try {
-      await onSave({
+      const payload: {
+        name: string
+        latitude: number
+        longitude: number
+        radiusKm: number
+        shape: 'circle' | 'polygon'
+        polygon?: { type: 'Polygon'; coordinates: [number, number][][] }
+      } = {
         name: name.trim(),
         latitude: selected.lat,
         longitude: selected.lon,
         radiusKm,
-      })
+        shape,
+      }
+      if (shape === 'polygon' && polygonPoints.length >= 3) {
+        // GeoJSONPolygon: coordinates = [ [ [lon, lat], ... ] ] (ring)
+        const ring: [number, number][] = polygonPoints.map(([lat, lon]) => [lon, lat])
+        const lats = polygonPoints.map(([lat]) => lat)
+        const lons = polygonPoints.map(([, lon]) => lon)
+        payload.latitude = lats.reduce((a, b) => a + b, 0) / lats.length
+        payload.longitude = lons.reduce((a, b) => a + b, 0) / lons.length
+        payload.polygon = { type: 'Polygon', coordinates: [ring] }
+      }
+      await onSave(payload)
       setSelected(null)
       setQuery('')
+      setShape('circle')
+      setPolygonPoints([])
+      setCoordInput('')
     } catch (err) {
       setError('No se pudo guardar la zona')
     } finally {
@@ -145,7 +171,11 @@ export default function LocationPanel({
     }
   }
 
-  const canSave = selected && selected.lat !== 0 && selected.lon !== 0
+  const canSave =
+    selected &&
+    selected.lat !== 0 &&
+    selected.lon !== 0 &&
+    (shape === 'circle' || polygonPoints.length >= 3)
 
   return (
     <AnimatePresence>
@@ -296,7 +326,89 @@ export default function LocationPanel({
                     </div>
                   </div>
 
-                  {/* Guardar */}
+                  {/* Tipo de zona: círculo o polígono */}
+                  <div>
+                    <label className="text-[10px] font-bold tracking-[0.1em] text-slate-500">
+                      Tipo de zona
+                    </label>
+                    <div className="flex gap-2 mt-1.5">
+                      <button
+                        onClick={() => {
+                          setShape('circle')
+                          setPolygonPoints([])
+                        }}
+                        className={`flex-1 px-3 py-2 rounded-xl text-[12.5px] font-medium transition ${shape === 'circle' ? 'bg-cyan-400/20 text-cyan-300 border border-cyan-400/40' : 'text-slate-400 bg-[#0b131d] border border-white/[0.06] hover:text-slate-200'}`}
+                      >
+                        Círculo
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShape('polygon')
+                          setCoordInput('')
+                        }}
+                        className={`flex-1 px-3 py-2 rounded-xl text-[12.5px] font-medium transition ${shape === 'polygon' ? 'bg-cyan-400/20 text-cyan-300 border border-cyan-400/40' : 'text-slate-400 bg-[#0b131d] border border-white/[0.06] hover:text-slate-200'}`}
+                      >
+                        Polígono
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Polígono: vértices (lat,lon) */}
+                  {shape === 'polygon' && (
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold tracking-[0.1em] text-slate-500">
+                        Vértices del polígono (lat,lon) — mín. 3
+                      </label>
+                      <textarea
+                        value={coordInput}
+                        onChange={(e) => setCoordInput(e.target.value)}
+                        placeholder="4.6097,-74.0817&#10;4.6100,-74.0800&#10;4.6080,-74.0810"
+                        className="w-full h-24 px-2.5 py-2 rounded-xl text-[11px] text-slate-200 font-mono
+                                   placeholder-slate-500 bg-[#0b131d] border border-white/[0.06]
+                                   focus:outline-none focus:border-cyan-400/40
+                                   focus:ring-1 focus:ring-cyan-400/30 transition resize-none"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            const pts = coordInput
+                              .trim()
+                              .split(/\n/)
+                              .map((l) => l.trim())
+                              .filter(Boolean)
+                              .map((l) =>
+                                l.split(',').map((n) => Number(n)) as [number, number]
+                              )
+                              .filter((p) => p.length === 2 && p.every((n) => !isNaN(n)))
+                            setPolygonPoints(pts)
+                            setCoordInput('')
+                          }}
+                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[12px]
+                                     font-medium text-cyan-300 bg-cyan-400/10 border border-cyan-400/30
+                                     hover:bg-cyan-400/15 transition"
+                        >
+                          Añadir vértices
+                        </button>
+                        {polygonPoints.length > 0 && (
+                          <button
+                            onClick={() => setPolygonPoints([])}
+                            className="px-3 py-2 rounded-xl text-[12px] text-slate-400
+                                       hover:text-slate-200 hover:bg-white/5 transition"
+                          >
+                            Limpiar
+                          </button>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-slate-500">
+                        {polygonPoints.length} vértice(s) definido(s) (mín. 3)
+                      </div>
+                      {polygonPoints.length >= 3 && (
+                        <div className="text-[10px] text-cyan-300">
+                          ✓ Polígono válido — listo para guardar
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <button
                     onClick={handleSave}
                     disabled={!canSave || isSaving}
@@ -345,7 +457,9 @@ export default function LocationPanel({
                             {loc.name}
                           </div>
                           <div className="text-[10px] text-slate-500">
-                            {loc.radiusKm} km de radio
+                            {loc.shape === 'polygon'
+                              ? `Polígono (${loc.polygon?.coordinates?.[0]?.length ?? 0} vértices)`
+                              : `${loc.radiusKm} km de radio`}
                           </div>
                         </div>
                         <button

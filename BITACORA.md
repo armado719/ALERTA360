@@ -35,6 +35,7 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 
 #### Estado:
 - ✅ TSC 0 · Tests 142/142
+- ✅ **Frontend D2** — `LocationPanel` toggle círculo/polígono + textarea vértices `(lat,lon)` → GeoJSON `Polygon` (centroide como lat/lng, `lon,lat` ring); `api.ts` `Location` + `createLocation` extienden `shape?`/`polygon?`; `LocationItem` badge polígono/vértices; `backend/src/routes/locations.ts` zod `shape` + `polygon` + create data. TSC frontend LIMPIO, `npm run build` OK (chunk warning único).
 
 ### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #6 D1 test + refactor)**
 #### Cambios Realizados:

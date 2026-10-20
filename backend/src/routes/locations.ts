@@ -2,11 +2,18 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { requireAuth } from '../middleware/requireAuth'
 
+const PolygonCoord = z.tuple([z.number(), z.number()])
+const GeoJSONPolygon = z.object({
+  type: z.literal('Polygon').optional(),
+  coordinates: z.array(z.array(PolygonCoord)).min(1),
+})
 const CreateLocationSchema = z.object({
   name: z.string().min(1),
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
   radiusKm: z.number().int().min(1).max(1000).optional().default(50),
+  shape: z.enum(['circle', 'polygon']).optional().default('circle'),
+  polygon: GeoJSONPolygon.optional(),
 })
 
 export async function registerLocationRoutes(fastify: FastifyInstance) {
@@ -25,7 +32,7 @@ export async function registerLocationRoutes(fastify: FastifyInstance) {
     if (!result.success) {
       return reply.status(400).send({ error: 'Invalid input', details: result.error.errors })
     }
-    const { name, latitude, longitude, radiusKm } = result.data
+    const { name, latitude, longitude, radiusKm, shape, polygon } = result.data
 
     const location = await fastify.prisma.location.create({
       data: {
@@ -34,6 +41,8 @@ export async function registerLocationRoutes(fastify: FastifyInstance) {
         latitude,
         longitude,
         radiusKm,
+        shape,
+        polygon: polygon ?? undefined,
       },
     })
     return reply.status(201).send(location)
