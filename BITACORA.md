@@ -14,6 +14,17 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 
 ## 🗓️ Historial de Cambios
 
+### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #5 B3 escalada por exposición)**
+#### Cambios Realizados:
+- ✅ **`backend/src/services/analysis/exposure.ts`** — `computeEscalationLevel(population, severity, radiusKm?): EscalationLevel` (0-4). Score = millones expuestos + peso severidad + ajuste radio.
+- ✅ **`backend/src/routes/events.ts`** — `GET /api/events` + `/:id` exponen `escalationLevel` (adiyacente a `exposedPopulation`).
+- ✅ **`backend/test/exposure.test.ts`** (+4 tests) — nivel 0/4, escalada por severidad, cap 4.
+- Niveles: 0 = sin exposición · 1 = bajo (<1 M) · 2 = medio · 3 = alto · 4 = crítico (>5 M o severity crítica). Reutilizable en el motor de alertas / WS payload.
+
+#### Estado:
+- ✅ TSC backend: 0 errores
+- ✅ Tests: 130/130
+
 ### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #4 B1 población expuesta)**
 #### Cambios Realizados:
 - ✅ **`backend/src/services/analysis/exposure.ts`** (nuevo) — `CITIES` (Top-15 áreas urbanas densas, datos UN 2022) + `estimateExposedPopulation(lat, lon, radiusKm?)` on-the-fly (reusa `haversineKm`).
@@ -23,7 +34,7 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 
 #### Estado:
 - ✅ TSC backend: 0 errores
-- ✅ Tests: 126/126 (`exposure` 4 + `meteoalarm` 4 + `digest` 8 + `freshness` 2 + 108 previos)
+- ✅ Tests: 130/130 (`exposure` 8 + `meteoalarm` 4 + `digest` 8 + `freshness` 2 + 108 previos)
 
 ### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #3 A3 Meteoalarm)**
 #### Cambios Realizados:

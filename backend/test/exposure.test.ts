@@ -28,3 +28,25 @@ describe('estimateExposedPopulation (B1)', () => {
     expect(CITIES.find((c) => c.name === 'Tokyo')?.population).toBe(TOKYO.pop)
   })
 })
+
+import { computeEscalationLevel } from '../src/services/analysis/exposure'
+
+describe('computeEscalationLevel (B3)', () => {
+  it('nivel 0 con población cero', () => {
+    expect(computeEscalationLevel(0, 'critical')).toBe(0)
+  })
+
+  it('nivel 4 para exposición crítica (Tokio + critical)', () => {
+    expect(computeEscalationLevel(37_400_066, 'critical')).toBe(4)
+  })
+
+  it('nivel sube con la severidad a la misma población', () => {
+    const low = computeEscalationLevel(2_000_000, 'low')
+    const crit = computeEscalationLevel(2_000_000, 'critical')
+    expect(crit).toBeGreaterThan(low)
+  })
+
+  it('nunca supera 4', () => {
+    expect(computeEscalationLevel(1_000_000_000, 'critical')).toBe(4)
+  })
+})

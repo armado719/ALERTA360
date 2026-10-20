@@ -52,3 +52,33 @@ export function estimateExposedPopulation(lat: number, lon: number, radiusKm = 5
   }
   return total
 }
+
+export type EscalationLevel = 0 | 1 | 2 | 3 | 4
+
+const SEVERITY_WEIGHT: Record<string, number> = {
+  low: 0,
+  medium: 1,
+  high: 3,
+  critical: 6,
+  unknown: 1,
+}
+
+/**
+ * Nivel de escalada (0-4) basado en población expuesta + severidad del evento.
+ * 0 = sin exposición relevante. 4 = exposición crítica (>~20 M o severity crítica).
+ */
+export function computeEscalationLevel(
+  population: number,
+  severity: string,
+  radiusKm = 50
+): EscalationLevel {
+  if (population <= 0) return 0
+  let score = population / 1_000_000 // millones de personas expuestas
+  score += SEVERITY_WEIGHT[severity] ?? 1
+  // radio ampliado suavemente aumenta el nivel (más área cubierta = más riesgo potencial)
+  score += (radiusKm - 50) / 50
+  if (score >= 20) return 4
+  if (score >= 5) return 3
+  if (score >= 1) return 2
+  return 1
+}

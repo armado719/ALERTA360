@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { z } from 'zod'
-import { estimateExposedPopulation } from '../services/analysis/exposure'
+import { estimateExposedPopulation, computeEscalationLevel } from '../services/analysis/exposure'
 
 const EventsQuerySchema = z.object({
   types: z.string().optional(),
@@ -59,6 +59,7 @@ export async function registerEventRoutes(fastify: FastifyInstance) {
       fetchedAt: e.fetchedAt.toISOString(),
       stale: e.stale,
       exposedPopulation: estimateExposedPopulation(e.latitude, e.longitude),
+      escalationLevel: computeEscalationLevel(estimateExposedPopulation(e.latitude, e.longitude), e.severity),
       rawData: e.rawData ?? undefined,
     }))
 
@@ -93,6 +94,7 @@ export async function registerEventRoutes(fastify: FastifyInstance) {
       fetchedAt: event.fetchedAt.toISOString(),
       stale: event.stale,
       exposedPopulation: estimateExposedPopulation(event.latitude, event.longitude),
+      escalationLevel: computeEscalationLevel(estimateExposedPopulation(event.latitude, event.longitude), event.severity),
       rawData: event.rawData ?? undefined,
     })
   })
