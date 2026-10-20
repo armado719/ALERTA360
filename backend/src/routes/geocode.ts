@@ -71,6 +71,21 @@ function setCache(key: string, result: unknown): void {
   cache.set(key, { result, expiry: Date.now() + CACHE_TTL })
 }
 
+/** Mapea la respuesta cruda de Nominatim a GeocodeResult[], filtrando ítems sin coordenadas. (pura — testeable sin red) */
+export function mapNominatimResults(items: Array<Record<string, unknown>>): GeocodeResult[] {
+  return items
+    .map(
+      (item): GeocodeResult => ({
+        name: String(item.display_name || '').split(',')[0].trim(),
+        lat: parseFloat(String(item.lat)),
+        lon: parseFloat(String(item.lon)),
+        display_name: String(item.display_name || ''),
+        type: typeof item.type === 'string' ? item.type : undefined,
+      })
+    )
+    .filter((r) => !Number.isNaN(r.lat) && !Number.isNaN(r.lon))
+}
+
 export async function registerGeocodeRoutes(app: FastifyInstance) {
   // GET /api/geocode/search?q=ciudad
   app.get(
@@ -99,17 +114,7 @@ export async function registerGeocodeRoutes(app: FastifyInstance) {
           timeout: 10000,
         })
 
-        return (res.data as Array<Record<string, unknown>>)
-          .map(
-            (item): GeocodeResult => ({
-              name: String(item.display_name || '').split(',')[0].trim(),
-              lat: parseFloat(String(item.lat)),
-              lon: parseFloat(String(item.lon)),
-              display_name: String(item.display_name || ''),
-              type: typeof item.type === 'string' ? item.type : undefined,
-            })
-          )
-          .filter((r) => !Number.isNaN(r.lat) && !Number.isNaN(r.lon))
+        return mapNominatimResults(res.data as Array<Record<string, unknown>>)
       })
 
       setCache(cacheKey, results)
@@ -164,6 +169,6 @@ export async function registerGeocodeRoutes(app: FastifyInstance) {
 
 function requireGeocodeEnabled(_request: FastifyRequest, reply: import('fastify').FastifyReply) {
   if (config.GEOCODE_ENABLED !== 'true') {
-    reply.status(503).send({ error: 'Geocodificación deshabilitada' })
+    return reply.status(503).send({ error: 'Geocodificación deshabilitada' })
   }
 }

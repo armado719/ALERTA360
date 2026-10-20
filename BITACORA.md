@@ -25,6 +25,25 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 - ✅ TSC backend: 0 errores
 - ✅ Tests: 130/130
 
+### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #6 D1 test + refactor)**
+#### Cambios Realizados:
+- ✅ **`backend/src/routes/geocode.ts`** — extrae `mapNominatimResults` (pura) del handler; `requireGeocodeEnabled` ahora hace `return reply.status(503)` (bug: el preHandler no terminaba la petición).
+- ✅ **`backend/test/geocode.test.ts`** (nuevo, 3 tests) — mappeo pura (coords + filtro ítems sin coords) + guard 503.
+- ✅ Reemplazado mock flaky de axios por test de función pura (determinístico, 49 ms).
+- 25/25 tests.
+
+#### Estado:
+- ✅ TSC 0 · Tests 133/133
+
+### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #5 B3 escalada por exposición)**
+#### Cambios Realizados:
+- ✅ `backend/src/services/analysis/exposure.ts` — `computeEscalationLevel(population, severity, radiusKm?): 0-4` (score = millones expuestos + peso severity + ajuste radio).
+- ✅ `backend/src/routes/events.ts` — expone `escalationLevel` en `GET /api/events` + `/:id`.
+- ✅ `+4 tests` en exposure.test.
+
+#### Estado:
+- ✅ TSC 0 · Tests 130/130
+
 ### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #4 B1 población expuesta)**
 #### Cambios Realizados:
 - ✅ **`backend/src/services/analysis/exposure.ts`** (nuevo) — `CITIES` (Top-15 áreas urbanas densas, datos UN 2022) + `estimateExposedPopulation(lat, lon, radiusKm?)` on-the-fly (reusa `haversineKm`).
