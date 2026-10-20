@@ -14,6 +14,19 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 
 ## 🗓️ Historial de Cambios
 
+### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #2 B5 resumen diario)**
+#### Cambios Realizados:
+- ✅ **`backend/src/services/notifications/digest.ts`** (nuevo) — `collectDigestEvents` (24 h activos/no stale), `filterEventsForUser` (tipo + severidad + radio haversine), `sendDailyDigest` reusando `sendEmail`/`email.ts` (SendGrid), `startDigestScheduler` (daily a `DIGEST_HOUR`).
+- ✅ **`backend/src/utils/config.ts`** — `DIGEST_ENABLED` (default `false`, dev) + `DIGEST_HOUR` (default 8 UTC).
+- ✅ **`backend/src/index.ts`** — arranca `startDigestScheduler(app.prisma)`.
+- ✅ **`backend/test/digest.test.ts`** (nuevo, 7 tests) — filtrado, envío, skip-when-disabled, failed, delay.
+- ✅ `notificationsDelivered` metrica email por `channel`/`status`.
+
+#### Estado:
+- ✅ TSC backend: 0 errores
+- ✅ Tests: 117/117 (`digest` 7 + `freshness` 2 + 108 previos)
+- ✅ Schema sin cambios desde #1
+
 ### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #1 Freshness)**
 #### Cambios Realizados:
 - ✅ `MEJORAS_DESDE_WORLD_INTEL.md` auditado: A1 (EONET) + A2 (GDACS) YA implementados en `ingestion.ts`; el doc analizó `world-intel-mcp` externo. Plan corregido prioriza por impacto real.

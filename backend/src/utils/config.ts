@@ -40,6 +40,8 @@ const ConfigSchema = z.object({
   NOMINATIM_URL: z.string().default('https://nominatim.openstreetmap.org'),
   INGEST_INTERVAL: z.coerce.number().default(300000),
   STALE_AFTER_MINUTES: z.coerce.number().default(30),
+  DIGEST_ENABLED: z.string().default('false'),
+  DIGEST_HOUR: z.coerce.number().default(8),
 })
 
 type Config = z.infer<typeof ConfigSchema>

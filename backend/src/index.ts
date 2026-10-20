@@ -2,6 +2,7 @@ import { buildApp } from './app'
 import { config } from './utils/config'
 import logger from './utils/logger'
 import { startIngestScheduler } from './services/ingestion'
+import { startDigestScheduler } from './services/notifications/digest'
 import { matchEvent } from './services/matching'
 import { wsConnections } from './plugins/metrics'
 
@@ -19,6 +20,7 @@ startIngestScheduler(app.prisma, {
     await matchEvent(app.prisma, event, app.hub)
   },
 })
+startDigestScheduler(app.prisma)
 
 const start = async () => {
   try {
