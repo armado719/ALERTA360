@@ -55,6 +55,8 @@ export async function registerEventRoutes(fastify: FastifyInstance) {
       occurredAt: e.occurredAt.toISOString(),
       detectedAt: e.detectedAt.toISOString(),
       source: e.source,
+      fetchedAt: e.fetchedAt.toISOString(),
+      stale: e.stale,
       rawData: e.rawData ?? undefined,
     }))
 
@@ -86,6 +88,8 @@ export async function registerEventRoutes(fastify: FastifyInstance) {
       occurredAt: event.occurredAt.toISOString(),
       detectedAt: event.detectedAt.toISOString(),
       source: event.source,
+      fetchedAt: event.fetchedAt.toISOString(),
+      stale: event.stale,
       rawData: event.rawData ?? undefined,
     })
   })

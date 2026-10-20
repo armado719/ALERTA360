@@ -39,6 +39,7 @@ const ConfigSchema = z.object({
   GEOCODE_ENABLED: z.string().default('true'),
   NOMINATIM_URL: z.string().default('https://nominatim.openstreetmap.org'),
   INGEST_INTERVAL: z.coerce.number().default(300000),
+  STALE_AFTER_MINUTES: z.coerce.number().default(30),
 })
 
 type Config = z.infer<typeof ConfigSchema>

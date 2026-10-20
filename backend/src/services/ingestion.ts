@@ -495,6 +495,12 @@ export function mapGDACS(feature: GDACSFeature) {
 let ingestCounter = 0
 
 /**
+ * Un evento se marca `stale` cuando su fetchedAt supera este umbral.
+ * Evita servir (y alertar) sobre un evento que no se ha re-ingestado. (C1/C2)
+ */
+const STALE_AFTER_MS = (config.STALE_AFTER_MINUTES ?? 30) * 60_000
+
+/**
  * Enganches opcionales para no acoplar la ingesta al motor de alertas.
  * `onEventCreated` se llama por cada evento nuevo ya persistido; si falla,
  * se registra el error y se sigue con el siguiente evento.
@@ -518,6 +524,28 @@ async function notifyHooks(hooks: IngestionHooks | undefined, event: Parameters<
     await hooks.onEventCreated(event)
   } catch (err) {
     logger.error({ err, eventId: event.id }, '[INGESTION] onEventCreated failed')
+  }
+}
+
+/**
+ * Marca como `stale` los eventos activos cuyo `fetchedAt` supera el umbral.
+ * (C1/C2 freshness: un falso "sin eventos" es peor que una caída.)
+ */
+export async function runFreshnessSweep(
+  prisma: PrismaClient,
+  staleAfterMs?: number
+): Promise<number> {
+  const cutoff = new Date(Date.now() - (staleAfterMs ?? STALE_AFTER_MS))
+  try {
+    const { count } = await prisma.disasterEvent.updateMany({
+      where: { stale: false, fetchedAt: { lt: cutoff }, isActive: true },
+      data: { stale: true },
+    })
+    logger.info(`[INGESTION] Freshness sweep — ${count} evento(s) marcados stale`)
+    return count
+  } catch (err) {
+    logger.warn({ err }, '[INGESTION] Freshness sweep falló')
+    return 0
   }
 }
 
@@ -696,9 +724,11 @@ export function startIngestScheduler(prisma: PrismaClient, hooks?: IngestionHook
 
   // Run immediately on startup, then every intervalMs
   runIngestion(prisma, hooks).catch(err => logger.error({ err }, 'Initial ingestion failed'))
+  void runFreshnessSweep(prisma).catch(err => logger.warn({ err }, '[INGESTION] Freshness sweep falló'))
 
   setInterval(() => {
     runIngestion(prisma, hooks).catch(err => logger.error({ err }, 'Scheduled ingestion failed'))
+    void runFreshnessSweep(prisma).catch(err => logger.warn({ err }, '[INGESTION] Freshness sweep falló'))
   }, intervalMs)
 
   logger.info(`[INGESTION] Scheduler started — enabled: ${enabledList}, interval: ${intervalMs / 1000}s`)

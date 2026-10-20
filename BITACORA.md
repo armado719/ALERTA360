@@ -14,6 +14,20 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 
 ## 🗓️ Historial de Cambios
 
+### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #1 Freshness)**
+#### Cambios Realizados:
+- ✅ `MEJORAS_DESDE_WORLD_INTEL.md` auditado: A1 (EONET) + A2 (GDACS) YA implementados en `ingestion.ts`; el doc analizó `world-intel-mcp` externo. Plan corregido prioriza por impacto real.
+- ✅ **`backend/prisma/schema.prisma`** — `DisasterEvent.fetchedAt DateTime @default(now())` + `stale Boolean @default(false)` + índices `@@[fetchedAt]`/`@@[stale]`.
+- ✅ **`backend/src/services/ingestion.ts`** — `runFreshnessSweep(prisma, staleAfterMs?)` marca `stale=true` a eventos con `fetchedAt` vencido; corre al startup y cada ciclo del scheduler. Nunca lanza (catch interno).
+- ✅ **`backend/src/routes/events.ts`** — `GET /api/events` + `/:id` exponen `fetchedAt` y `stale`.
+- ✅ **`backend/src/utils/config.ts`** — `STALE_AFTER_MINUTES` (default 30).
+- ✅ **`backend/test/freshness.test.ts`** (nuevo, 2 tests) — sweep marca stale con `where:{stale:false,fetchedAt:{lt},isActive:true}` + manejo de fallo retorna 0.
+
+#### Estado:
+- ✅ TSC backend: 0 errores (`tsc --noEmit`)
+- ✅ Tests: 110/110 (`vitest run`) — 2 freshness + 108 previos
+- ✅ Schema sincronizada (`prisma generate`)
+
 ### **2026-10-19 — FASE 3: notificaciones push offline (Service Worker + Web Push VAPID)**
 #### Cambios Realizados:
 - ✅ **`backend/src/utils/config.ts`** — Vars `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` (defaults para dev; en prod por env).

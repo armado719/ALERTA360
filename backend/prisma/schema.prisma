@@ -85,12 +85,16 @@ model DisasterEvent {
   rawData     Json?    // Payload completo de la API origen
   
   isActive    Boolean  @default(true)
+  fetchedAt   DateTime @default(now()) // marca de tiempo de ingestión
+  stale       Boolean  @default(false)  // true si fetchedAt supera el umbral de frescura
   
   notifications Notification[]
   
   @@index([type])
   @@index([occurredAt])
   @@index([isActive])
+  @@index([fetchedAt])
+  @@index([stale])
   @@index([latitude, longitude])
 }
 
