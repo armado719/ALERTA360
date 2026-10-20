@@ -24,7 +24,7 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 
 #### Estado:
 - ✅ TSC backend: 0 errores
-- ✅ Tests: 117/117 (`digest` 7 + `freshness` 2 + 108 previos)
+- ✅ Tests: 118/118 (`digest` 8 + `freshness` 2 + 108 previos)
 - ✅ Schema sin cambios desde #1
 
 ### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #1 Freshness)**
