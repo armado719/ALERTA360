@@ -19,6 +19,13 @@ const ConfigSchema = z.object({
   TWILIO_AUTH_TOKEN: z.string().default(''),
   TWILIO_FROM_NUMBER: z.string().default(''),
   TWILIO_BASE_URL: z.string().default('https://api.twilio.com'),
+  // --- Web Push (notificaciones offline cuando el WS no está conectado) ---
+  VAPID_PUBLIC_KEY: z
+    .string()
+    .default('BPxbliXzBcrNeL6NLG_b1TiD3h3NhKHkJApJEJqYwYMVLqBrBZ7GjQtHE3A3Q2LpBszyczHUnZ2-9wrOwWjl6CU'),
+  VAPID_PRIVATE_KEY: z
+    .string()
+    .default('Zb_N1XzCO5Rp3uD-Ow1g_1GrICIB-A2eN7GMx830MOI'),
   // --- Documentación ---
   DOCS_ENABLED: z.string().default('true'),
 

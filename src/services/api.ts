@@ -149,9 +149,22 @@ export async function reverseGeocode(lat: number, lon: number): Promise<ReverseG
   return response.data
 }
 
-// Alerts
-export async function subscribeToAlerts(locationId: string): Promise<void> {
-  await api.post('/notifications/subscribe', { locationId })
+// Web Push (notificaciones offline cuando el WS no está conectado)
+export interface PushSubscriptionInput {
+  endpoint: string
+  expirationTime?: number | null
+  keys?: { p256dh: string; auth: string }
+}
+
+/** Clave pública VAPID: la recibe del backend; el secreto nunca sale del servidor. */
+export async function fetchVapidKey(): Promise<string> {
+  const response = await api.get('/notifications/vapid')
+  return response.data.publicKey
+}
+
+/** Registra la suscripción del navegador (para push offline). */
+export async function subscribeToPush(subscription: PushSubscriptionInput): Promise<void> {
+  await api.post('/notifications/subscribe', subscription)
 }
 
 // ============================================================================

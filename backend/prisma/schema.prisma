@@ -16,7 +16,8 @@ model User {
   email         String   @unique
   username      String   @unique
   passwordHash  String
-  phone         String?  // E.164 para SMS (ej. +573001234567)
+  phone         String?  // E.164 para SMS (ej. +573****4567)
+  pushSubscription Json?  // Web Push subscription del navegador (notificaciones offline)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   

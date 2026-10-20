@@ -12,8 +12,9 @@ import {
   matchingRuns,
   notificationsCreated,
 } from '../plugins/metrics'
-import type { AlertHub } from '../realtime/hub'
+import type { AlertHub, AlertPayload } from '../realtime/hub'
 import { dispatchEventNotifications } from './notifications/dispatch'
+import { sendPush } from './push'
 
 /**
  * Motor de alertas: decide qué usuarios deben recibir un evento y crea las
@@ -68,6 +69,7 @@ export interface MatchCandidate {
   userId: string
   preferences: MatchPreferences
   locations: MatchLocation[]
+  pushSubscription: unknown | null
 }
 
 export interface MatchResult {
@@ -169,6 +171,7 @@ interface PreferenceRow {
   smsEnabled: boolean
   user: {
     locations: Array<{ id: string; latitude: number; longitude: number; radiusKm: number }>
+    pushSubscription: unknown | null
   }
 }
 
@@ -196,6 +199,7 @@ export async function matchEvent(
             locations: {
               select: { id: true, latitude: true, longitude: true, radiusKm: true },
             },
+            pushSubscription: true,
           },
         },
       },
@@ -214,6 +218,7 @@ export async function matchEvent(
           smsEnabled: row.smsEnabled,
         },
         locations: row.user.locations,
+        pushSubscription: row.user.pushSubscription ?? null,
       }))
 
     const results = findMatches(event, candidates)
@@ -239,7 +244,7 @@ export async function matchEvent(
       if (byChannel[channel] > 0) notificationsCreated.inc({ channel }, byChannel[channel])
     }
 
-    const pushedLive = pushToSockets(event, results, hub)
+    const pushedLive = pushToSockets(event, results, candidates, hub)
 
     // Si el usuario tenía el socket abierto, la notificación ya salió.
     if (pushedLive > 0) {
@@ -276,13 +281,15 @@ export async function matchEvent(
 function pushToSockets(
   event: MatchableEvent,
   results: MatchResult[],
+  candidates: MatchCandidate[],
   hub?: AlertHub
 ): number {
-  if (!hub || hub.size === 0) return 0
+  if (!hub) return 0
 
+  const subs = new Map<string, unknown>(candidates.map((c) => [c.userId, c.pushSubscription]))
   let delivered = 0
   for (const result of results) {
-    const sent = hub.sendToUser(result.userId, {
+    const payload: AlertPayload = {
       type: 'alert',
       eventId: event.id,
       title: event.title ?? event.type,
@@ -292,8 +299,23 @@ function pushToSockets(
       occurredAt: event.occurredAt.toISOString(),
       latitude: event.latitude,
       longitude: event.longitude,
-    })
-    if (sent > 0) delivered++
+    }
+    const live = hub.sendToUser(result.userId, payload)
+    if (live > 0) {
+      delivered++
+      continue
+    }
+    // Sin WebSocket conectado: fallback a push offline (Web Push).
+    void sendPush(subs.get(result.userId), {
+      title: payload.title,
+      body: `Evento ${payload.severity} a ${payload.distanceKm} km de tu zona`,
+      data: {
+        eventId: payload.eventId,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        url: `/events/${payload.eventId}`,
+      },
+    }).catch((err) => logger.warn({ err, userId: result.userId }, '[PUSH] Fallo en fallback offline'))
   }
   return delivered
 }

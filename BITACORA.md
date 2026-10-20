@@ -2,7 +2,7 @@
 
 **Proyecto:** ALERTA360 — Plataforma Global de Alertas Tempranas para Desastres Naturales  
 **Última actualización:** 2026-10-19  
-**Versión actual:** 0.4.1 (MVP Fases 1-3 + producción + motor de alertas Fase 4 + geolocalización/zonas) — Motor de alertas validado con test de integración e2e ✓
+**Versión actual:** 0.5.0 (MVP Fases 1-3 + producción + motor de alertas Fase 4 + geolocalización/zonas + notificaciones push offline vía Service Worker + Web Push VAPID) — Motor de alertas validado con test de integración e2e ✓
 
 ---
 
@@ -13,6 +13,28 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 ---
 
 ## 🗓️ Historial de Cambios
+
+### **2026-10-19 — FASE 3: notificaciones push offline (Service Worker + Web Push VAPID)**
+#### Cambios Realizados:
+- ✅ **`backend/src/utils/config.ts`** — Vars `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` (defaults para dev; en prod por env).
+- ✅ **`backend/prisma/schema.prisma`** — Campo `User.pushSubscription Json?` (subscription del navegador). `prisma generate` OK.
+- ✅ **`backend/src/services/push.ts`** (nuevo) — `sendPush(subscription, payload)` vía `web-push` con VAPID; nunca lanza (catch + log).
+- ✅ **`backend/src/services/matching.ts`** — `pushToSockets` ahora recibe los candidatos; si `hub.sendToUser` retorna 0 (sin WS conectado) hace **fallback a `sendPush`** con payload `{title, body, data:{eventId, lat, lng, url}}`. La query incluye `user.pushSubscription`.
+- ✅ **`backend/src/routes/notifications.ts`** — `POST /api/notifications/subscribe` (guarda subscription, Zod-validada) + `GET /api/notifications/vapid` (clave pública para el cliente). Auth JWT requerido.
+- ✅ **`backend/src/types/web-push.d.ts`** (nuevo) — Declarations mínimas para `web-push`.
+- ✅ **`backend/test/push.test.ts`** (nuevo, 4 tests) — `web-push` mockeado: envío OK → true, sin subscription → false, fallo 410 → false, payload JSON correcto.
+- ✅ **`backend/test/alert-engine.int.test.ts`** — Test añadido: *fallback a push offline cuando el usuario no tiene WS conectado* (`hub.sendToUser` → 0 + subscription → `sendPush` llamado). `sendPush` mockeado; `vitest 108/108`.
+- ✅ **`public/sw.js`** (JS puro) — `push` → `showNotification(title,{body,icon,badge,data,requireInteraction,actions})`; `notificationclick` → focus/open `data.url`; `install` skipWaiting; `activate` limpia cache.
+- ✅ **`src/hooks/usePushSubscription.ts`** (nuevo) — Registro SW `/sw.js`, permiso notificaciones, fetch VAPID key, `pushManager.subscribe(applicationServerKey)`, POST subscription. Estado `{supported, ready, subscribed, permission}`.
+- ✅ **`src/services/api.ts`** — `fetchVapidKey()` + `subscribeToPush(sub)`; reemplaza `subscribeToAlerts(locationId)` (huérfana, sin uso).
+- ✅ **`src/App.tsx`** — `usePushSubscription(!!user)` dispara el registro push cuando el usuario está autenticado.
+
+#### Estado:
+- ✅ TSC backend: 0 errores (`tsc --noEmit`)
+- ✅ TSC frontend: 0 errores (`tsc --noEmit`)
+- ✅ Tests backend: 108/108 (`vitest run`) — incluye 4 push + 5 alert-engine (con fallback) + 17 matching + 82 previos
+- ✅ Build frontend: exitoso (`npm run build`, 2.512 módulos, `dist/sw.js` incluido)
+- ✅ Bitácora: v1.3
 
 ### **2026-10-19 — Geolocalización, zonas de alerta + validación e2e del motor de alertas**
 #### Cambios Realizados:
@@ -635,6 +657,6 @@ ALERTA360/
 ---
 
 **Última actualización:** 2026-10-19  
-**Versión de la bitácora:** 1.2  
+**Versión de la bitácora:** 1.3  \
 **Status:** ✅ Activo
 

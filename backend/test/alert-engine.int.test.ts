@@ -15,10 +15,17 @@
  * hub es el núcleo de push y aquí se prueba con un socket simulado cuyo
  * readyState===1 reproduce el comportamiento de un WS abierto.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { PrismaClient } from '@prisma/client'
 import { buildApp } from '../src/app'
 import { matchEvent, type MatchableEvent } from '../src/services/matching'
+import { sendPush } from '../src/services/push'
+import type { AlertHub } from '../src/realtime/hub'
+
+// sendPush se mockea: el fallback offline no debe tocar web-push en tests
+vi.mock('../src/services/push', () => ({
+  sendPush: vi.fn().mockResolvedValue(true),
+}))
 
 const BOGOTA = { id: 'loc-bogota', latitude: 4.711, longitude: -74.0721, radiusKm: 50 }
 
@@ -89,6 +96,10 @@ function makeFakeSocket() {
 }
 
 describe('Motor de alertas push en vivo (integración con hub real)', () => {
+  beforeEach(() => {
+    vi.mocked(sendPush).mockClear()
+  })
+
   it('empuja el AlertPayload al WS simulado cuando el evento entra en la zona', async () => {
     const { prisma } = fakePrisma([preferenceRow()])
     const app = await buildApp({ prisma })
@@ -166,6 +177,29 @@ describe('Motor de alertas push en vivo (integración con hub real)', () => {
 
     expect(summary.matchedUsers).toBe(0)
     expect(sent).toHaveLength(0)
+
+    await app.close()
+  })
+
+  it('fallback a push offline cuando el usuario no tiene WS conectado', async () => {
+    const row = preferenceRow()
+    row.user.pushSubscription = {
+      endpoint: 'https://fcm/send/xyz',
+      keys: { p256dh: 'a', auth: 'b' },
+    }
+    const { prisma } = fakePrisma([row])
+    const app = await buildApp({ prisma })
+    const hub = { size: 0, sendToUser: vi.fn(() => 0) } as unknown as AlertHub
+
+    const summary = await matchEvent(app.prisma, makeEvent(), hub)
+
+    expect(summary.pushedLive).toBe(0)
+    expect(summary.created).toBe(2)
+    expect(sendPush).toHaveBeenCalledTimes(1)
+    expect(sendPush).toHaveBeenCalledWith(
+      { endpoint: 'https://fcm/send/xyz', keys: { p256dh: 'a', auth: 'b' } },
+      expect.objectContaining({ title: 'Sismo cerca de Bogotá' })
+    )
 
     await app.close()
   })

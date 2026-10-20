@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { requireAuth } from '../middleware/requireAuth'
+import { config } from '../utils/config'
 
 /**
  * Bandeja de alertas del usuario.
@@ -24,6 +25,18 @@ const eventSelect = {
   occurredAt: true,
   source: true,
 } as const
+
+/** Subscription mínima que exige el navegador para Web Push. */
+const PushSubscriptionSchema = z.object({
+  endpoint: z.string().url(),
+  expirationTime: z.number().nullable().optional(),
+  keys: z
+    .object({
+      p256dh: z.string(),
+      auth: z.string(),
+    })
+    .optional(),
+})
 
 interface NotificationRow {
   id: string
@@ -110,6 +123,15 @@ export async function registerNotificationRoutes(fastify: FastifyInstance) {
     }
   )
 
+  // GET /api/notifications/vapid — clave pública del servidor para Web Push
+  fastify.get(
+    '/notifications/vapid',
+    { preHandler: requireAuth },
+    async (_request: FastifyRequest, reply: FastifyReply) => {
+      return reply.send({ publicKey: config.VAPID_PUBLIC_KEY })
+    }
+  )
+
   // POST /api/notifications/:id/read
   fastify.post(
     '/notifications/:id/read',
@@ -145,6 +167,28 @@ export async function registerNotificationRoutes(fastify: FastifyInstance) {
         data: { readAt: new Date() },
       })
       return reply.send({ ok: true, updated: count })
+    }
+  )
+
+  // POST /api/notifications/subscribe — guarda la suscripción Web Push del navegador
+  fastify.post(
+    '/notifications/subscribe',
+    { preHandler: requireAuth },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const parsed = PushSubscriptionSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Invalid subscription', details: parsed.error.errors })
+      }
+      const userId = (request as any).user.id as string
+      try {
+        await fastify.prisma.user.update({
+          where: { id: userId },
+          data: { pushSubscription: parsed.data as any },
+        })
+      } catch (err) {
+        return reply.status(400).send({ error: 'No se pudo registrar la suscripción' })
+      }
+      return reply.send({ ok: true })
     }
   )
 

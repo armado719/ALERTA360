@@ -8,6 +8,7 @@ import Header from './components/Header'
 import AuthModal from './components/AuthModal'
 import EventDetailCard from './components/EventDetailCard'
 import NotificationsPanel from './components/NotificationsPanel'
+import { usePushSubscription } from './hooks/usePushSubscription'
 import { useAlerts } from './hooks/useAlerts'
 import { DisasterEvent } from './types'
 import type { TimelineState } from './components/Map'
@@ -46,6 +47,9 @@ function App() {
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [showLocationPanel, setShowLocationPanel] = useState(false)
   const [locations, setLocations] = useState<Location[]>([])
+
+  // Registro Web Push (push offline) cuando el usuario está autenticado
+  usePushSubscription(!!user)
 
   /* ---------- Auth ---------- */
   // Alertas del motor de matching: bandeja + push en vivo por WebSocket
