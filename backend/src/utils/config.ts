@@ -42,6 +42,13 @@ const ConfigSchema = z.object({
   STALE_AFTER_MINUTES: z.coerce.number().default(30),
   DIGEST_ENABLED: z.string().default('false'),
   DIGEST_HOUR: z.coerce.number().default(8),
+  // Meteoalarm (Europa/Asia-Pacific) — A3
+  METEOALARM_ENABLED: z.string().default('false'),
+  METEOALARM_URL: z
+    .string()
+    .default('https://meteoalarm.cc-d.eu/api/1.0/warnings'),
+  METEOALARM_COUNTRIES: z.string().default('ALL'),
+  METEOALARM_TIMEOUT: z.coerce.number().default(10000),
 })
 
 type Config = z.infer<typeof ConfigSchema>

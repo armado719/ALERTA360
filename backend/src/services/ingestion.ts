@@ -18,6 +18,7 @@ registerSource('usgs')
 registerSource('noaa')
 registerSource('nasa_eonet')
 registerSource('gdacs')
+registerSource('meteoalarm')
 
 // ============================================================================
 // USGS Earthquake API
@@ -490,6 +491,87 @@ export function mapGDACS(feature: GDACSFeature) {
 }
 
 // ============================================================================
+// Meteoalarm (Europa / Asia-Pacific) — A3
+// ============================================================================
+export interface MeteoalarmFeature {
+  type: string
+  severity: string
+  area?: string
+  city?: string
+  lat: number
+  lon: number
+  onset: string
+  expires: string
+  title?: string
+  description?: string
+  [key: string]: unknown
+}
+
+const METEOALARM_TYPE_MAP: Record<string, string> = {
+  flood_alert: 'flood',
+  flood: 'flood',
+  storm: 'storm',
+  windstorm: 'storm',
+  wind: 'wind',
+  snow: 'snow',
+  wildfire: 'wildfire',
+  earthquakedam: 'earthquake',
+  earthquake: 'earthquake',
+}
+
+/**
+ * Mapea la severidad textual de Meteoalarm al escalado ALERTA360
+ * (usa la misma escala de severidad del schema).
+ */
+function mapMeteoalarmSeverity(severity: string): string {
+  const s = (severity || '').toLowerCase()
+  if (s.includes('extreme') || s.includes('severe')) return 'high'
+  if (s.includes('moderate')) return 'medium'
+  if (s.includes('minor')) return 'low'
+  return 'medium'
+}
+
+/**
+ * El endpoint `METEOALARM_URL` es configurable (no hay un JSON público estable
+ * para toda Europa). El contrato esperado: un array de objetos con
+ * `type, severity, lat, lon, onset, area, title, description`.
+ */
+async function fetchMeteoalarm(): Promise<MeteoalarmFeature[]> {
+  const res = await axios.get<MeteoalarmFeature[]>(config.METEOALARM_URL, {
+    timeout: config.METEOALARM_TIMEOUT,
+    params:
+      config.METEOALARM_COUNTRIES !== 'ALL'
+        ? { countries: config.METEOALARM_COUNTRIES }
+        : undefined,
+    headers: {
+      'User-Agent': 'ALERTA360 (arc.fullstack30@gmail.com)',
+    },
+  })
+  return res.data ?? []
+}
+
+export function mapMeteoalarm(feature: MeteoalarmFeature) {
+  if (Number.isNaN(feature.lat) || Number.isNaN(feature.lon)) return null
+  const mappedType = METEOALARM_TYPE_MAP[feature.type] ?? 'flood'
+  const title = feature.title || `${mappedType} alerta — ${feature.area || feature.city || ''}`.trim()
+
+  return {
+    type: mappedType,
+    source: 'meteoalarm' as const,
+    externalId: [feature.onset, feature.lat, feature.lon].join('|'),
+    latitude: feature.lat,
+    longitude: feature.lon,
+    magnitude: null,
+    intensity: null,
+    title,
+    description: feature.description || title,
+    severity: mapMeteoalarmSeverity(feature.severity),
+    occurredAt: feature.onset ? new Date(feature.onset) : new Date(),
+    rawData: { ...feature } as any,
+  }
+}
+
+// ============================================================================
 // Ingestion cycle
 // ============================================================================
 let ingestCounter = 0
@@ -552,7 +634,7 @@ export async function runFreshnessSweep(
 export async function runIngestion(
   prisma: PrismaClient,
   hooks?: IngestionHooks
-): Promise<{ usgs: number; noaa: number; eonet: number; gdacs: number }> {
+): Promise<{ usgs: number; noaa: number; eonet: number; gdacs: number; meteoalarm: number }> {
   const cycle = ++ingestCounter
   const startedAt = Date.now()
   logger.info(`[INGESTION] Starting cycle #${cycle}`)
@@ -677,13 +759,44 @@ export async function runIngestion(
     }
   }
 
-  const total = usgsInserted + noaaInserted + eonetInserted + gdacsInserted
+  // ---- Meteoalarm (Europe/APAC) ----
+  let meteoalarmInserted = 0
+  if (config.METEOALARM_ENABLED === 'true' && canFetch('meteoalarm')) {
+    let meteoalarmEvents: MeteoalarmFeature[] = []
+    try {
+      meteoalarmEvents = await fetchMeteoalarm()
+      reportSuccess('meteoalarm')
+    } catch (err) {
+      reportFailure('meteoalarm', err)
+    }
+    for (const feature of meteoalarmEvents) {
+      try {
+        const mapped = mapMeteoalarm(feature)
+        if (!mapped) continue
+        const existing = await prisma.disasterEvent.findFirst({
+          where: { externalId: mapped.externalId, source: 'meteoalarm' },
+        })
+        if (existing) continue
+        const created = await prisma.disasterEvent.create({ data: { ...mapped, isActive: true } })
+        meteoalarmInserted++
+        await notifyHooks(hooks, created)
+      } catch (err) {
+        ingestionErrorsTotal.inc({ source: 'meteoalarm' })
+        logger.error({ err, eventId: feature.onset }, 'Error inserting Meteoalarm event')
+      }
+    }
+  } else if (config.METEOALARM_ENABLED === 'true') {
+    logger.warn('ⓘ [INGESTION] Meteoalarm skipped — circuit breaker abierto')
+  }
+
+  const total = usgsInserted + noaaInserted + eonetInserted + gdacsInserted + meteoalarmInserted
 
   // ---- métricas ----
   if (usgsInserted > 0) ingestionEventsTotal.inc({ source: 'usgs' }, usgsInserted)
   if (noaaInserted > 0) ingestionEventsTotal.inc({ source: 'noaa' }, noaaInserted)
   if (eonetInserted > 0) ingestionEventsTotal.inc({ source: 'nasa_eonet' }, eonetInserted)
   if (gdacsInserted > 0) ingestionEventsTotal.inc({ source: 'gdacs' }, gdacsInserted)
+  if (meteoalarmInserted > 0) ingestionEventsTotal.inc({ source: 'meteoalarm' }, meteoalarmInserted)
   ingestionCycleDuration.set((Date.now() - startedAt) / 1000)
   markIngestionSuccess()
 
@@ -695,9 +808,10 @@ export async function runIngestion(
 
   logger.info(
     `[INGESTION] Cycle #${cycle} complete — USGS: ${usgsInserted} new, ` +
-      `NOAA: ${noaaInserted} new, EONET: ${eonetInserted} new, GDACS: ${gdacsInserted} new (${total} total)`
+      `NOAA: ${noaaInserted} new, EONET: ${eonetInserted} new, GDACS: ${gdacsInserted} new, ` +
+      `METEOALARM: ${meteoalarmInserted} new (${total} total)`
   )
-  return { usgs: usgsInserted, noaa: noaaInserted, eonet: eonetInserted, gdacs: gdacsInserted }
+  return { usgs: usgsInserted, noaa: noaaInserted, eonet: eonetInserted, gdacs: gdacsInserted, meteoalarm: meteoalarmInserted }
 }
 
 // Schedule: every INGEST_INTERVAL ms
@@ -707,6 +821,7 @@ export function startIngestScheduler(prisma: PrismaClient, hooks?: IngestionHook
     noaa: config.NOAA_ENABLED === 'true',
     eonet: config.EONET_ENABLED === 'true',
     gdacs: config.GDACS_ENABLED === 'true',
+    meteoalarm: config.METEOALARM_ENABLED === 'true',
   }
   const anyEnabled = Object.values(enabledFlags).some(Boolean)
 

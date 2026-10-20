@@ -14,6 +14,17 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 
 ## 🗓️ Historial de Cambios
 
+### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #3 A3 Meteoalarm)**
+#### Cambios Realizados:
+- ✅ **`backend/src/services/ingestion.ts`** — `fetchMeteoalarm` + `mapMeteoalarm` (tipo/severidad/área vía maps), `registerSource('meteoalarm')`, caso en `runIngestion` con circuit breaker + flags, retorno + métricas + log actualizados.
+- ✅ **`backend/src/utils/config.ts`** — `METEOALARM_ENABLED` (default `false`), `METEOALARM_URL`, `METEOALARM_COUNTRIES`, `METEOALARM_TIMEOUT`.
+- ✅ **`backend/test/meteoalarm.test.ts`** (nuevo, 4 tests) — mapeo, null por coords, severity default, externalId sin colisión.
+- Endpoint configurable (no hay JSON público estable de Meteoalarm para toda Europa); el mapeo asume contrato JSON `[{type, severity, lat, lon, onset, area, title, description}]`.
+
+#### Estado:
+- ✅ TSC backend: 0 errores
+- ✅ Tests: 122/122 (`meteoalarm` 4 + `digest` 8 + `freshness` 2 + 108 previos)
+
 ### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #2 B5 resumen diario)**
 #### Cambios Realizados:
 - ✅ **`backend/src/services/notifications/digest.ts`** (nuevo) — `collectDigestEvents` (24 h activos/no stale), `filterEventsForUser` (tipo + severidad + radio haversine), `sendDailyDigest` reusando `sendEmail`/`email.ts` (SendGrid), `startDigestScheduler` (daily a `DIGEST_HOUR`).
@@ -24,7 +35,7 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 
 #### Estado:
 - ✅ TSC backend: 0 errores
-- ✅ Tests: 118/118 (`digest` 8 + `freshness` 2 + 108 previos)
+- ✅ Tests: 122/122 (`meteoalarm` 4 + `digest` 8 + `freshness` 2 + 108 previos)
 - ✅ Schema sin cambios desde #1
 
 ### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #1 Freshness)**
