@@ -1,5 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { z } from 'zod'
+import { estimateExposedPopulation } from '../services/analysis/exposure'
 
 const EventsQuerySchema = z.object({
   types: z.string().optional(),
@@ -57,6 +58,7 @@ export async function registerEventRoutes(fastify: FastifyInstance) {
       source: e.source,
       fetchedAt: e.fetchedAt.toISOString(),
       stale: e.stale,
+      exposedPopulation: estimateExposedPopulation(e.latitude, e.longitude),
       rawData: e.rawData ?? undefined,
     }))
 
@@ -90,6 +92,7 @@ export async function registerEventRoutes(fastify: FastifyInstance) {
       source: event.source,
       fetchedAt: event.fetchedAt.toISOString(),
       stale: event.stale,
+      exposedPopulation: estimateExposedPopulation(event.latitude, event.longitude),
       rawData: event.rawData ?? undefined,
     })
   })

@@ -14,6 +14,17 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 
 ## 🗓️ Historial de Cambios
 
+### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #4 B1 población expuesta)**
+#### Cambios Realizados:
+- ✅ **`backend/src/services/analysis/exposure.ts`** (nuevo) — `CITIES` (Top-15 áreas urbanas densas, datos UN 2022) + `estimateExposedPopulation(lat, lon, radiusKm?)` on-the-fly (reusa `haversineKm`).
+- ✅ **`backend/src/routes/events.ts`** — `GET /api/events` + `/:id` exponen `exposedPopulation` (población dentro de 50 km del epicentro).
+- ✅ **`backend/test/exposure.test.ts`** (nuevo, 4 tests) — exposición Tokio, 0 en mar abierto, radio configurable, dataset 15 ciudades.
+- Sin cambio de schema (cálculo on-the-fly, escalable a Top-N).
+
+#### Estado:
+- ✅ TSC backend: 0 errores
+- ✅ Tests: 126/126 (`exposure` 4 + `meteoalarm` 4 + `digest` 8 + `freshness` 2 + 108 previos)
+
 ### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #3 A3 Meteoalarm)**
 #### Cambios Realizados:
 - ✅ **`backend/src/services/ingestion.ts`** — `fetchMeteoalarm` + `mapMeteoalarm` (tipo/severidad/área vía maps), `registerSource('meteoalarm')`, caso en `runIngestion` con circuit breaker + flags, retorno + métricas + log actualizados.
