@@ -116,6 +116,22 @@ describe('matchCandidate', () => {
   it('no genera match si el usuario no tiene ubicaciones', () => {
     expect(matchCandidate(event(), candidate({ locations: [] }))).toBeNull()
   })
+
+  it('acepta un evento dentro de un polígono (D2)', () => {
+    const POLY: [number, number][] = [[-75, 4], [-73, 4], [-73, 5], [-75, 5]]
+    const polyLoc = { ...BOGOTA, id: 'loc-poly', shape: 'polygon', polygon: { coordinates: [POLY] } }
+    const result = matchCandidate(event(), candidate({ locations: [polyLoc] }))
+    expect(result).not.toBeNull()
+    expect(result?.locationId).toBe('loc-poly')
+    expect(result?.distanceKm).toBe(0)
+  })
+
+  it('rechaza evento fuera del polígono (D2)', () => {
+    const POLY: [number, number][] = [[-75, 4], [-73, 4], [-73, 5], [-75, 5]]
+    const polyLoc = { ...BOGOTA, id: 'loc-poly', shape: 'polygon', polygon: { coordinates: [POLY] } }
+    const result = matchCandidate(event({ latitude: 0, longitude: 0 }), candidate({ locations: [polyLoc] }))
+    expect(result).toBeNull()
+  })
 })
 
 describe('findMatches', () => {

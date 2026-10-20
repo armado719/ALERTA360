@@ -25,6 +25,17 @@ Este documento registra **todos los cambios, modificaciones y actualizaciones** 
 - ✅ TSC backend: 0 errores
 - ✅ Tests: 130/130
 
+### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #7 D2 zonas polígono)**
+#### Cambios Realizados:
+- ✅ `backend/prisma/schema.prisma` — `Location.shape String @default("circle")` + `Location.polygon Json?` (GeoJSON).
+- ✅ backend/src/utils/geo.ts — `pointInPolygon` (ray casting) + `pointInPolygonAntimeridian` (maneja cruce ±180°).
+- ✅ backend/src/services/matching.ts — `matchCandidate` branch: `shape="polygon"` → punto-en-polígono (`distanceKm=0`); `findMany` select incluye `shape, polygon`; +`normalizePolygonCoords`.
+- ✅ `backend/test/geo-polygon.test.ts` (nuevo, 7 tests) — dentro/fuera + antimeridiano Fiji (179°E/179°W).
+- ✅ `backend/test/matching.test.ts` — +2 tests (evento dentro/fuera polígono).
+
+#### Estado:
+- ✅ TSC 0 · Tests 142/142
+
 ### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #6 D1 test + refactor)**
 #### Cambios Realizados:
 - ✅ **`backend/src/routes/geocode.ts`** — extrae `mapNominatimResults` (pura) del handler; `requireGeocodeEnabled` ahora hace `return reply.status(503)` (bug: el preHandler no terminaba la petición).

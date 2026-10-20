@@ -3,6 +3,7 @@ import logger from '../utils/logger'
 import {
   haversineKm,
   isNullIsland,
+  pointInPolygonAntimeridian,
   severityRank,
   type Severity,
 } from '../utils/geo'
@@ -54,6 +55,8 @@ export interface MatchLocation {
   latitude: number
   longitude: number
   radiusKm: number
+  shape?: string
+  polygon?: unknown
 }
 
 export interface MatchPreferences {
@@ -109,6 +112,14 @@ export function channelsFor(preferences: MatchPreferences, severity: string): Ch
   return channels
 }
 
+/** Extrae el primer anillo [lon, lat][] de un GeoJSON Polygon/MultiPolygon. */
+function normalizePolygonCoords(polygon: unknown): [number, number][] | null {
+  if (!polygon || typeof polygon !== 'object') return null
+  const coords = (polygon as { coordinates?: unknown }).coordinates
+  if (Array.isArray(coords) && Array.isArray(coords[0])) return coords[0] as [number, number][]
+  return null
+}
+
 /**
  * Evalúa un evento contra un usuario y sus ubicaciones.
  * Devuelve `null` si no aplica ninguna regla.
@@ -127,12 +138,22 @@ export function matchCandidate(
 
   let closest: { location: MatchLocation; distanceKm: number } | null = null
   for (const location of candidate.locations) {
-    const distanceKm = haversineKm(location, event)
-    const radiusKm =
-      location.radiusKm > 0 ? location.radiusKm : preferences.alertRadiusKm
-    if (distanceKm > radiusKm) continue
-    if (!closest || distanceKm < closest.distanceKm) {
-      closest = { location, distanceKm }
+    const isPolygon = location.shape === 'polygon' && location.polygon
+    if (isPolygon) {
+      const ring = normalizePolygonCoords(location.polygon)
+      if (!ring || !pointInPolygonAntimeridian(event, ring)) continue
+      const distanceKm = 0
+      if (!closest || distanceKm < closest.distanceKm) {
+        closest = { location, distanceKm }
+      }
+    } else {
+      const distanceKm = haversineKm(location, event)
+      const radiusKm =
+        location.radiusKm > 0 ? location.radiusKm : preferences.alertRadiusKm
+      if (distanceKm > radiusKm) continue
+      if (!closest || distanceKm < closest.distanceKm) {
+        closest = { location, distanceKm }
+      }
     }
   }
   if (!closest) return null
@@ -170,7 +191,7 @@ interface PreferenceRow {
   emailEnabled: boolean
   smsEnabled: boolean
   user: {
-    locations: Array<{ id: string; latitude: number; longitude: number; radiusKm: number }>
+    locations: Array<{ id: string; latitude: number; longitude: number; radiusKm: number; shape?: string; polygon?: unknown }>
     pushSubscription: unknown | null
   }
 }
@@ -197,7 +218,7 @@ export async function matchEvent(
         user: {
           select: {
             locations: {
-              select: { id: true, latitude: true, longitude: true, radiusKm: true },
+              select: { id: true, latitude: true, longitude: true, radiusKm: true, shape: true, polygon: true },
             },
             pushSubscription: true,
           },

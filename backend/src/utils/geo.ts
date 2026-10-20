@@ -98,3 +98,47 @@ export function polygonCentroid(coords: [number, number][]): Coordinates {
 
   return { latitude: cy, longitude: cx }
 }
+
+/**
+ * Ray-casting: ¿el punto está dentro del polígono?
+ * `polygon` es un anillo GeoJSON de [lon, lat]. O(n) sin deps.
+ */
+export function pointInPolygon(point: Coordinates, polygon: [number, number][]): boolean {
+  const { latitude, longitude } = point
+  let inside = false
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i] // lon, lat
+    const [xj, yj] = polygon[j]
+    const intersect =
+      yi > latitude !== yj > latitude &&
+      longitude < ((xj - xi) * (latitude - yi)) / (yj - yi) + xi
+    if (intersect) inside = !inside
+  }
+  return inside
+}
+
+/**
+ * `pointInPolygon` que maneja polígonos cruzando el antimeridiano (±180°).
+ *
+ * Detecta cruce cuando max(lon) - min(lon) > 180 y, en ese caso, normaliza
+ * las longitudes negativas a [0, 360) antes del ray-casting. Sin cruce delega
+ * a `pointInPolygon` (costo ~0 para zonas normales).
+ */
+export function pointInPolygonAntimeridian(
+  point: Coordinates,
+  polygon: [number, number][]
+): boolean {
+  const lons = polygon.map(([lon]) => lon)
+  const crossesAntimeridian = Math.max(...lons) - Math.min(...lons) > 180
+  if (!crossesAntimeridian) return pointInPolygon(point, polygon)
+
+  const shiftedPolygon = polygon.map(([lon, lat]) => [
+    lon < 0 ? lon + 360 : lon,
+    lat,
+  ]) as [number, number][]
+  const shiftedPoint = {
+    latitude: point.latitude,
+    longitude: point.longitude < 0 ? point.longitude + 360 : point.longitude,
+  }
+  return pointInPolygon(shiftedPoint, shiftedPolygon)
+}
