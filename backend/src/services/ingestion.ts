@@ -19,6 +19,7 @@ registerSource('noaa')
 registerSource('nasa_eonet')
 registerSource('gdacs')
 registerSource('meteoalarm')
+registerSource('nhc')
 
 // ============================================================================
 // USGS Earthquake API
@@ -572,6 +573,87 @@ export function mapMeteoalarm(feature: MeteoalarmFeature) {
 }
 
 // ============================================================================
+// NHC Forecast Cone / ciclones tropicales — A4
+// ============================================================================
+// Fuente pública del ArcGIS REST de NOAA (capa "Forecast Cone"):
+// https://mapservices.weather.noaa.gov/tropical/rest/services/tropical/NHC_tropical_weather_summary/MapServer/7/query
+// Cada feature es el cono de incertidumbre (Polygon) de un ciclón tropical activo.
+// El cono se persiste en `rawData.cone`; el evento se ancla a su centroide.
+interface NHCResponseFeature {
+  type: string
+  properties: Record<string, unknown>
+  geometry: { type: string; coordinates: number[][][] } | null
+}
+interface NHCResponse { type: string; features: NHCResponseFeature[] }
+
+async function fetchNHC(): Promise<NHCResponseFeature[]> {
+  const res = await axios.get<NHCResponse>(config.NHC_URL, {
+    timeout: config.NHC_TIMEOUT,
+    params: { where: '1=1', outFields: '*', f: 'geojson' },
+    headers: { 'User-Agent': 'ALERTA360 (arc.fullstack30@gmail.com)' },
+  })
+  return res.data?.features ?? []
+}
+
+const NHC_BASIN_MAP: Record<string, string> = {
+  AL: 'Atlantic',
+  EP: 'Eastern Pacific',
+  CP: 'Central Pacific',
+  WP: 'Western Pacific (JTWC)',
+}
+
+/**
+ * Mapea un feature del cono NHC a un evento ALERTA360.
+ * - type 'hurricane' (ciclón tropical)
+ * - severity por viento máximo (kts): 96+ critical, 64-95 high, 34-63 medium, <34 low
+ * - rawData.cone = GeoJSON Polygon del cono de incertidumbre
+ * - externalId único por (wallet/storm-id + advisory)
+ */
+export function mapNHC(feature: NHCResponseFeature) {
+  if (!feature.geometry || feature.geometry.type !== 'Polygon') return null
+  if (!Array.isArray(feature.geometry.coordinates?.[0])) return null
+
+  const ring = feature.geometry.coordinates[0]
+  // GeoJSON ring es [lon, lat]; polygonCentroid también espera [lon, lat]
+  const points = ring.map((c) => [c[0], c[1]] as [number, number])
+  const centroid = polygonCentroid(points)
+  if (!centroid || isNullIsland(centroid)) return null
+
+  const props = feature.properties || {}
+  const wind = Number(props.WIND_MAX_KTS ?? props.maxWind ?? props.wind ?? 0) || 0
+
+  let severity = 'low'
+  if (wind >= 96) severity = 'critical'
+  else if (wind >= 64) severity = 'high'
+  else if (wind >= 34) severity = 'medium'
+
+  const wallet = String(props.STORMID ?? props.id ?? props.wallet ?? '')
+  const stormNum = String(props.STORMNUM ?? props.num ?? '')
+  const basinPrefix = wallet.slice(0, 2).toUpperCase()
+  const basin = NHC_BASIN_MAP[basinPrefix] ?? props.BASIN ?? props.basin ?? ''
+  const name =
+    props.STORMNAME ?? props.NAME ?? props.stormName ?? props.NAME_STORM ??
+    (basin && stormNum ? `${basin} ${stormNum}` : 'Ciclón tropical')
+
+  const startedAt = typeof props.ONDATE === 'string' ? new Date(props.ONDATE) : new Date()
+
+    return {
+      type: 'hurricane' as const,
+      source: 'nhc' as const,
+      externalId: `nhc-${wallet}-${typeof props.ADATE === 'string' ? props.ADATE : (typeof props.advTime === 'string' ? props.advTime : startedAt.toISOString())}`,
+      latitude: centroid.latitude,
+      longitude: centroid.longitude,
+      magnitude: wind > 0 ? wind : null,
+      intensity: wind > 0 ? Math.round(wind) : null,
+      title: `${name}${wind ? ` — ${wind} kts` : ''}`,
+      description: `${name} — cono de incertidumbre del NHC (${basin || 'zona'})`,
+      severity,
+      occurredAt: !isNaN(startedAt.getTime()) ? startedAt : new Date(),
+      rawData: { ...props, cone: feature.geometry } as any,
+    }
+  }
+
+// ============================================================================
 // Ingestion cycle
 // ============================================================================
 let ingestCounter = 0
@@ -634,7 +716,7 @@ export async function runFreshnessSweep(
 export async function runIngestion(
   prisma: PrismaClient,
   hooks?: IngestionHooks
-): Promise<{ usgs: number; noaa: number; eonet: number; gdacs: number; meteoalarm: number }> {
+): Promise<{ usgs: number; noaa: number; eonet: number; gdacs: number; meteoalarm: number; nhc: number }> {
   const cycle = ++ingestCounter
   const startedAt = Date.now()
   logger.info(`[INGESTION] Starting cycle #${cycle}`)
@@ -789,7 +871,37 @@ export async function runIngestion(
     logger.warn('ⓘ [INGESTION] Meteoalarm skipped — circuit breaker abierto')
   }
 
-  const total = usgsInserted + noaaInserted + eonetInserted + gdacsInserted + meteoalarmInserted
+  // ---- NHC Forecast Cone (A4) ----
+  let nhcInserted = 0
+  if (config.NHC_ENABLED === 'true' && canFetch('nhc')) {
+    let nhcEvents: NHCResponseFeature[] = []
+    try {
+      nhcEvents = await fetchNHC()
+      reportSuccess('nhc')
+    } catch (err) {
+      reportFailure('nhc', err)
+    }
+    for (const feature of nhcEvents) {
+      try {
+        const mapped = mapNHC(feature)
+        if (!mapped) continue
+        const existing = await prisma.disasterEvent.findFirst({
+          where: { externalId: mapped.externalId, source: 'nhc' },
+        })
+        if (existing) continue
+        const created = await prisma.disasterEvent.create({ data: { ...mapped, isActive: true } })
+        nhcInserted++
+        await notifyHooks(hooks, created)
+      } catch (err) {
+        ingestionErrorsTotal.inc({ source: 'nhc' })
+        logger.error({ err }, '[INGESTION] Error inserting NHC event')
+      }
+    }
+  } else if (config.NHC_ENABLED === 'true') {
+    logger.warn('ⓘ [INGESTION] NHC skipped — circuit breaker abierto')
+  }
+
+  const total = usgsInserted + noaaInserted + eonetInserted + gdacsInserted + meteoalarmInserted + nhcInserted
 
   // ---- métricas ----
   if (usgsInserted > 0) ingestionEventsTotal.inc({ source: 'usgs' }, usgsInserted)
@@ -797,6 +909,7 @@ export async function runIngestion(
   if (eonetInserted > 0) ingestionEventsTotal.inc({ source: 'nasa_eonet' }, eonetInserted)
   if (gdacsInserted > 0) ingestionEventsTotal.inc({ source: 'gdacs' }, gdacsInserted)
   if (meteoalarmInserted > 0) ingestionEventsTotal.inc({ source: 'meteoalarm' }, meteoalarmInserted)
+  if (nhcInserted > 0) ingestionEventsTotal.inc({ source: 'nhc' }, nhcInserted)
   ingestionCycleDuration.set((Date.now() - startedAt) / 1000)
   markIngestionSuccess()
 
@@ -809,9 +922,9 @@ export async function runIngestion(
   logger.info(
     `[INGESTION] Cycle #${cycle} complete — USGS: ${usgsInserted} new, ` +
       `NOAA: ${noaaInserted} new, EONET: ${eonetInserted} new, GDACS: ${gdacsInserted} new, ` +
-      `METEOALARM: ${meteoalarmInserted} new (${total} total)`
+      `METEOALARM: ${meteoalarmInserted} new, NHC: ${nhcInserted} new (${total} total)`
   )
-  return { usgs: usgsInserted, noaa: noaaInserted, eonet: eonetInserted, gdacs: gdacsInserted, meteoalarm: meteoalarmInserted }
+  return { usgs: usgsInserted, noaa: noaaInserted, eonet: eonetInserted, gdacs: gdacsInserted, meteoalarm: meteoalarmInserted, nhc: nhcInserted }
 }
 
 // Schedule: every INGEST_INTERVAL ms
@@ -822,6 +935,7 @@ export function startIngestScheduler(prisma: PrismaClient, hooks?: IngestionHook
     eonet: config.EONET_ENABLED === 'true',
     gdacs: config.GDACS_ENABLED === 'true',
     meteoalarm: config.METEOALARM_ENABLED === 'true',
+    nhc: config.NHC_ENABLED === 'true',
   }
   const anyEnabled = Object.values(enabledFlags).some(Boolean)
 

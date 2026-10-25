@@ -49,6 +49,12 @@ const ConfigSchema = z.object({
     .default('https://meteoalarm.cc-d.eu/api/1.0/warnings'),
   METEOALARM_COUNTRIES: z.string().default('ALL'),
   METEOALARM_TIMEOUT: z.coerce.number().default(10000),
+  // --- NHC Forecast Cone / ciclones tropicales (A4) ---
+  NHC_ENABLED: z.string().default('true'),
+  NHC_URL: z
+    .string()
+    .default('https://mapservices.weather.noaa.gov/tropical/rest/services/tropical/NHC_tropical_weather_summary/MapServer/7/query'),
+  NHC_TIMEOUT: z.coerce.number().default(10000),
 })
 
 type Config = z.infer<typeof ConfigSchema>
