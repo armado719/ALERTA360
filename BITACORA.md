@@ -32,6 +32,14 @@ Este documento registra **todos los cambios significativos** del proyecto ALERTA
 
 ## 🗓️ Historial de Cambios
 
+### **2026-10-25 — Fix CI: el job "Backend Build & Test" fallaba siempre**
+#### Cambios Realizados:
+- ✅ **`backend/vitest.config.ts`** — `css: { postcss: {} }`. Vite busca un `postcss.config.js` hacia arriba desde `backend/` y encontraba el del frontend (raíz), que carga `tailwindcss`. El job de backend solo instala `backend/node_modules`, así que Vitest abortaba antes de ejecutar ningún test. En local no se notaba porque la raíz tiene `tailwindcss` instalado.
+- Venía fallando en `main` desde que se añadieron los tests al CI (`f071dee`).
+
+#### Estado:
+- ✅ Clon limpio sin `.env` + `npm ci` solo en `backend/` + `npm test`: 146/146 (16 archivos)
+
 ### **2026-10-25 — Reorganización de la bitácora (v1.3 → v1.4)**
 #### Cambios Realizados:
 - ✅ Orden cronológico restaurado según la fecha de los commits; cuatro bloques sin título ni fecha ahora tienen su entrada.
