@@ -36,6 +36,14 @@ interface LocationPanelProps {
   onDelete: (id: string) => Promise<void>
 }
 
+// Códigos de GeolocationPositionError (1 permiso, 2 no disponible, 3 tiempo)
+const GEO_ERRORS: Record<number, string> = {
+  0: 'No se pudo obtener la ubicación. Busca tu ciudad por nombre.',
+  1: 'El navegador bloqueó la ubicación. Permítela en el ícono del candado junto a la dirección, o busca tu ciudad por nombre.',
+  2: 'El equipo no pudo determinar tu ubicación. En Windows revisa Configuración → Privacidad → Ubicación, o busca tu ciudad por nombre.',
+  3: 'La ubicación tardó demasiado en responder. Inténtalo de nuevo o busca tu ciudad por nombre.',
+}
+
 interface SearchResult {
   name: string
   lat: number
@@ -120,11 +128,13 @@ export default function LocationPanel({
         }
         setIsGpsLoading(false)
       },
-      () => {
-        setError('No se pudo obtener la ubicación. Verifica los permisos.')
+      (err) => {
+        setError(GEO_ERRORS[err.code] ?? GEO_ERRORS[0])
         setIsGpsLoading(false)
       },
-      { enableHighAccuracy: true, timeout: 8000 }
+      // En un PC sin GPS la alta precisión suele agotar el tiempo; para una
+      // zona de alerta basta la ubicación por Wi-Fi/red.
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 5 * 60 * 1000 }
     )
   }
 

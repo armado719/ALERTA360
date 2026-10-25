@@ -14,6 +14,7 @@ interface HeaderProps {
   notificationsOpen?: boolean
   onLocationClick?: () => void
   locationsCount?: number
+  onSettingsClick?: () => void
 }
 
 export default function Header({
@@ -26,6 +27,7 @@ export default function Header({
   notificationsOpen = false,
   onLocationClick,
   locationsCount = 0,
+  onSettingsClick,
 }: HeaderProps) {
   const [now, setNow] = useState(() => new Date())
 
@@ -121,7 +123,7 @@ export default function Header({
         </IconButton>
 
         <div className="hidden sm:block">
-          <IconButton title="Configuración" hoverColor="violet">
+          <IconButton title="Configuración" hoverColor="violet" onClick={onSettingsClick}>
             <Settings className="w-[17px] h-[17px]" />
           </IconButton>
         </div>

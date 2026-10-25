@@ -32,6 +32,81 @@ Este documento registra **todos los cambios significativos** del proyecto ALERTA
 
 ## 🗓️ Historial de Cambios
 
+### **2026-10-25 — Ingesta: NHC duplicado, fechas de NOAA y GDACS 404 ⚠️ sin commitear**
+#### Diagnóstico (con respuestas reales de cada fuente):
+- 🐞 **NHC duplicaba los ciclones cada 5 min** (bug de A4): `mapNHC` leía campos inventados (`STORMID`, `STORMNAME`, `WIND_MAX_KTS`) que la capa real no tiene (`idp_source`, `stormname`, `stormtype`, `basin`; **sin viento**). Sin identificador, el `externalId` caía en la hora actual → un evento nuevo por ciclo (22 duplicados en la BD local), título genérico y severidad siempre `low`.
+- 🐞 **NOAA no guardaba ninguna alerta**: `occurredAt = new Date(props.starts)`, pero el NWS no publica `starts` (0 de 368 alertas reales); trae `onset`/`effective`/`sent`. Toda alerta fallaba con `Invalid Date`.
+- 🐞 **GDACS 404**: `gdacsapi.php` dejó de existir. La API actual (`/gdacsapi/api/events/geteventlist/SEARCH`) cambió los campos (`fromdate`, `severitydata`, `iscurrent` como texto, nivel `Red` sí se usa), pagina de a 100 y responde 400 al pedir una página después de la última.
+- ⚠️ Los tests de NHC, NOAA y GDACS usaban datos con campos inventados y por eso pasaban.
+
+#### Cambios Realizados:
+- ✅ **`mapNHC`** — un evento por tormenta (`nhc-<stormId>` desde `idp_source`); sin id estable se descarta; severidad por `stormtype` (TD/STD/PTC low · TS/STS medium · HU high · MH critical); título en español ("Tormenta tropical Vance"). **`saveNHCEvent`** (nuevo): la primera vez crea y alerta; los avisos siguientes actualizan posición, cono, severidad y `fetchedAt` del mismo evento, sin volver a alertar.
+- ✅ **`mapNOAA`** — `occurredAt` = primera fecha válida entre `onset`, `effective` y `sent`; `NOAAAlertProperties` sin `starts`.
+- ✅ **GDACS** — `config.GDACS_URL` (API actual); `fetchGDACS` con `fromDate`/`toDate`, sin EQ, hasta 3 páginas, dedup por tipo+id, timeout 45 s, y el 400 de fin de páginas no se registra como fallo. `mapGDACS` lee `fromdate` (UTC), `severitydata`, descarta `iscurrent: "false"`; `externalId = gdacs-<tipo>-<eventid>`; `Red → critical`.
+- ✅ **`sources/health.ts`** — `summarizeError()`: el log de fallos de fuentes muestra mensaje, código, estado HTTP y URL en lugar del AxiosError completo (~50 líneas por fallo).
+- ✅ **Tests reescritos con datos reales**: `nhc.test.ts` (7, incluye `saveNHCEvent`), `sources.test.ts` (GDACS 9 con el tifón IN-FA-26; NOAA +2 de fechas).
+- ✅ **BD local** — borrados los 22 ciclones duplicados (`externalId LIKE 'nhc--%'`, 0 notificaciones asociadas); quedan Vance (`nhc-EP222026`) y Olana (`nhc-CP032026`).
+
+#### Estado:
+- ✅ TSC backend 0 · tests 157/157 (17 archivos)
+- ✅ Mappers contra respuestas reales: NHC 2 → 2 (ids estables); NOAA 371 → 20 con geometría, 0 fechas inválidas
+- ✅ ~90 min de ciclos reales: NOAA inserta 1–2 alertas por ciclo; NHC sin duplicados; GDACS insertó 54 y 81 eventos
+- ⚠️ GDACS es inestable (a veces >45 s o 400 en la página 1); el circuit breaker lo aísla. Hubo cortes de DNS (`ENOTFOUND`) hacia NOAA y NASA desde la red local, ajenos al código.
+
+### **2026-10-25 — Inicio de sesión, panel de Configuración y panel de alertas más grande ⚠️ sin commitear**
+#### Diagnóstico del inicio de sesión:
+- 🐞 **BD local desactualizada:** faltaban 8 columnas (`User.phone`, `User.pushSubscription`, `DisasterEvent.fetchedAt/stale`, `Location.shape/polygon`, `Notification.error`, `UserPreference.minSeverity`). Registro, login y `/api/events` respondían 500. Se arregla con `npx prisma db push` en `backend/` (solo agrega columnas e índices; verificado: 2 notificaciones, 0 duplicados para el nuevo `@@unique`).
+- 🐞 **El registro no devolvía token:** la UI mostraba al usuario conectado, pero zonas, alertas y preferencias fallaban con 401 y al recargar pedía entrar otra vez.
+- 🐞 **`/auth/me` devolvía `{ user }`** y el frontend lo trataba como el usuario: al recargar, el nombre salía vacío.
+- 🔒 **`/auth/me` exponía `passwordHash`** (usaba `include` sin `select`).
+- 🐞 Errores en inglés y técnicos en la UI ("Invalid credentials", "Invalid input").
+
+#### Cambios Realizados:
+- ✅ **`backend/src/routes/auth.ts`** — `signToken()` compartido; `register` responde `{ token, user }`; `/me` usa `select` con campos públicos (`id`, `email`, `username`, `phone`).
+- ✅ **`backend/test/auth.test.ts`** (nuevo, 4 tests) — registro con token válido, 409 por correo repetido, login 200/401, `/me` sin `passwordHash`.
+- ✅ **`src/services/api.ts`** — `getMe()` lee `response.data.user`; `register()` guarda el token; nuevos `fetchPreferences()` / `updatePreferences()`.
+- ✅ **`src/components/AuthModal.tsx`** — `authErrorMessage()`: mensajes en español según el estado HTTP (sin conexión, 401, 409, 400 por campo, 5xx); `minLength` de usuario (3) y de contraseña (8, solo al registrarse).
+- ✅ **`src/components/SettingsPanel.tsx`** (nuevo) — el botón ⚙️ abre "Configuración de alertas", conectado a `/api/preferences`: tipos de evento (los 7 que acepta el backend), severidad mínima, canales push/email/SMS con teléfono E.164 validado. Sin sesión, ofrece iniciarla. El radio por defecto no se muestra porque el motor solo lo usa si una zona no tiene radio propio.
+- ✅ **`src/components/Header.tsx`** + **`src/App.tsx`** — `onSettingsClick` y estado `showSettings`.
+- ✅ **`src/components/NotificationsPanel.tsx`** — 360 → 460 px de ancho, 540 → 720 px de alto, títulos en 2 líneas (`line-clamp-2`) y texto/espaciado más legibles.
+
+#### Estado:
+- ✅ TSC backend y frontend: 0 errores · tests backend 150/150 (17 archivos)
+- ✅ Probado en el navegador: error de login en español, Configuración sin sesión, panel de alertas a 460 px dentro del viewport
+- ✅ BD local sincronizada (`prisma db push --accept-data-loss` en `backend/`); el primer ciclo de ingesta posterior insertó 238 eventos (USGS 199, EONET 37, NHC 2)
+- ✅ Con sesión: registro → sesión iniciada; recarga → la sesión y el nombre se mantienen; Configuración carga, valida el teléfono (sin código de país o demasiado largo → no deja guardar) y guarda (verificado contra `GET /api/preferences`)
+
+#### Motor de alertas — email/SMS nunca salían con la app abierta:
+- 🐞 Con el WebSocket abierto, `matchEvent` marcaba como `sent` **todas** las notificaciones del evento (push, email y SMS) de **todos** los usuarios coincidentes, antes de llamar al despachador. Este solo procesa las `pending`, así que con la app abierta el email y el SMS no se enviaban nunca, aunque SendGrid o Twilio estuvieran configurados. Se detectó porque los emails figuraban como `sent` sin `SENDGRID_API_KEY`.
+- ✅ **`backend/src/services/matching.ts`** — `pushToSockets` devuelve los `userId` que recibieron la alerta en vivo; el `updateMany` marca `sent` solo `channel: 'push'` de esos usuarios.
+- ✅ **`backend/test/alert-engine.int.test.ts`** — el Prisma falso aplica el `where` del `updateMany`; nuevo test "con el WS abierto marca enviado solo el push…". Falla sin el arreglo (`expected 'sent' to be 'pending'`) y pasa con él.
+- ✅ Prueba real de punta a punta: zona de 600 km en California para el usuario de prueba → en ~3 min, 2 sismos de USGS cerca de Anza, CA (298 km) → 4 notificaciones (push + email) → visibles en el panel de alertas (460 px, dentro del viewport).
+- ℹ️ Los títulos de USGS llegan en inglés ("4 km WSW of Anza, CA").
+
+#### Push offline (Web Push) nunca se configuraba:
+- 🐞 Al arrancar: `[PUSH] VAPID no configurado — webpush.setVapidDetails is not a function`. `web-push` es CommonJS y el backend es ESM (`"type": "module"`): con `import * as webpush` las funciones no existen (solo están en el export por defecto), así que `sendPush` devolvía siempre `false`. El mock del test exponía exports con nombre y ocultaba el fallo.
+- ✅ **`backend/src/services/push.ts`** — `import webpush from 'web-push'`.
+- ✅ **`backend/src/types/web-push.d.ts`** — tipado como export por defecto.
+- ✅ **`backend/test/push.test.ts`** — el mock replica la forma real del paquete (`{ default: {...} }`).
+- ✅ Verificado: TSC 0 · `push` + `alert-engine` 10/10 · cargar `push.ts` con `tsx` ya no muestra el aviso de VAPID.
+
+#### GPS de "Zonas de alerta":
+- ✅ **`src/components/LocationPanel.tsx`** — `GEO_ERRORS` por código (1 permiso bloqueado → candado del navegador; 2 no disponible → ubicación de Windows; 3 tiempo agotado). `enableHighAccuracy: false`, `timeout` 15 s y `maximumAge` 5 min: en un PC sin GPS la alta precisión agotaba los 8 s.
+- ✅ Probado con permiso denegado: muestra el mensaje del candado.
+
+### **2026-10-25 — Demo público gratuito en GitHub Pages ⚠️ sin commitear**
+#### Cambios Realizados:
+- ✅ **`src/services/api.ts`** — `DEMO_MODE` (`import.meta.env.MODE === 'demo'`).
+- ✅ **`src/App.tsx`** — en modo demo no llama al backend, carga `DEMO_EVENTS` directo, no abre el login automáticamente y avisa "Demo público: eventos simulados…".
+- ✅ **`src/components/AuthModal.tsx`** — en modo demo, el envío muestra "El demo público no tiene backend…" en lugar de un error HTTP.
+- ✅ **`package.json`** — `npm run build:demo` (`vite build --mode demo --base=/ALERTA360/`).
+- ✅ **`.github/workflows/pages.yml`** (nuevo) — en cada push a `main` construye el demo, copia `index.html` a `404.html` (fallback SPA) y lo publica en `https://armado719.github.io/ALERTA360/`.
+
+#### Estado:
+- ✅ TSC frontend 0 · `build:demo` OK (2.465 módulos, assets bajo `/ALERTA360/`)
+- ✅ Probado con `vite preview` en `/ALERTA360/`: mapa 2D con 178 eventos, vista 3D (chunk diferido), login desactivado con aviso, 0 errores de consola, 0 peticiones a `/api`
+- ⏳ Activar una vez: Settings → Pages → Source: **GitHub Actions**
+
 ### **2026-10-25 — Fix CI: el job "Backend Build & Test" fallaba siempre**
 #### Cambios Realizados:
 - ✅ **`backend/vitest.config.ts`** — `css: { postcss: {} }`. Vite busca un `postcss.config.js` hacia arriba desde `backend/` y encontraba el del frontend (raíz), que carga `tailwindcss`. El job de backend solo instala `backend/node_modules`, así que Vitest abortaba antes de ejecutar ningún test. En local no se notaba porque la raíz tiene `tailwindcss` instalado.

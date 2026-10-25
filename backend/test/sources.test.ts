@@ -115,94 +115,88 @@ describe('circuit breaker (health.ts)', () => {
 // mapGDACS (ingestion.ts)
 // ============================================================================
 describe('mapGDACS', () => {
-  function gdacsFeature(overrides: Partial<GDACSFeature> = {}): GDACSFeature {
+  // Forma real de la API actual (geteventlist/SEARCH), tifón del 2026-10-25
+  function gdacsFeature(properties: Partial<GDACSFeature['properties']> = {}, geometry?: any): GDACSFeature {
     return {
       type: 'Feature',
       properties: {
-        eventid: 'GDACS_001',
+        eventid: 1001343,
         eventtype: 'TC',
-        alertlevel: 'Orange',
-        name: 'Cyclone near Mumbai',
-        date: '2026-10-17T12:00:00Z',
-        description: 'Severe cyclonic storm',
-        severity: 65,
+        alertlevel: 'Green',
+        name: 'Tropical Cyclone IN-FA-26',
+        description: 'Tropical Cyclone IN-FA-26',
+        fromdate: '2026-10-25T06:00:00',
+        country: 'Marshall Islands',
+        iscurrent: 'true',
+        severitydata: {
+          severity: 231.48,
+          severitytext: 'Hurricane/Typhoon > 74 mph (maximum wind speed of 231 km/h)',
+          severityunit: 'km/h',
+        },
+        url: { report: 'https://www.gdacs.org/report.aspx?eventid=1001343&eventtype=TC' },
+        ...properties,
       },
-      geometry: {
-        type: 'Point',
-        coordinates: [72.8, 18.9], // [lon, lat] → Mumbai
-      },
-      ...overrides,
+      geometry: geometry ?? { type: 'Point', coordinates: [163.9, 13.4] }, // [lon, lat]
     }
   }
 
-  it('mapea correctamente un ciclón (TC) a storm', () => {
+  it('mapea un ciclón real (TC) a storm con los campos de la API actual', () => {
     const mapped = mapGDACS(gdacsFeature())
     expect(mapped).not.toBeNull()
     expect(mapped!.type).toBe('storm')
     expect(mapped!.source).toBe('gdacs')
-    expect(mapped!.externalId).toBe('GDACS_001')
-    expect(mapped!.latitude).toBe(18.9)
-    expect(mapped!.longitude).toBe(72.8)
-    expect(mapped!.title).toBe('Cyclone near Mumbai')
+    expect(mapped!.externalId).toBe('gdacs-TC-1001343')
+    expect(mapped!.latitude).toBe(13.4)
+    expect(mapped!.longitude).toBe(163.9)
+    expect(mapped!.title).toBe('Tropical Cyclone IN-FA-26')
+    expect(mapped!.description).toContain('231 km/h')
+    expect(mapped!.magnitude).toBe(231.48)
+  })
+
+  it('interpreta fromdate (sin zona horaria) como UTC', () => {
+    expect(mapGDACS(gdacsFeature())!.occurredAt.toISOString()).toBe('2026-10-25T06:00:00.000Z')
+    const invalida = mapGDACS(gdacsFeature({ fromdate: 'no-es-fecha' }))
+    expect(Number.isNaN(invalida!.occurredAt.getTime())).toBe(false)
+  })
+
+  it('el externalId distingue el tipo (eventid solo es único por tipo)', () => {
+    const tc = mapGDACS(gdacsFeature({ eventid: 1000, eventtype: 'TC' }))!
+    const wf = mapGDACS(gdacsFeature({ eventid: 1000, eventtype: 'WF' }))!
+    expect(tc.externalId).not.toBe(wf.externalId)
+  })
+
+  it('descarta eventos ya terminados (iscurrent "false")', () => {
+    expect(mapGDACS(gdacsFeature({ iscurrent: 'false' }))).toBeNull()
   })
 
   it('intercambia coordenadas de [lon,lat] a [lat,lon]', () => {
-    const mapped = mapGDACS(
-      gdacsFeature({
-        geometry: { type: 'Point', coordinates: [-3.7, 40.4] },
-      })
-    )
+    const mapped = mapGDACS(gdacsFeature({}, { type: 'Point', coordinates: [-3.7, 40.4] }))
     expect(mapped!.latitude).toBe(40.4)
     expect(mapped!.longitude).toBe(-3.7)
   })
 
-  it('filtra sismos (EQ) — los cubre USGS', () => {
-    expect(mapGDACS(gdacsFeature({ properties: { eventid: 'G1', eventtype: 'EQ', alertlevel: 'Red', name: 'Quake', date: '2026-10-17T12:00:00Z' } }))).toBeNull()
-  })
-
-  it('filtra tipos desconocidos', () => {
-    expect(mapGDACS(gdacsFeature({ properties: { eventid: 'G1', eventtype: 'XX', alertlevel: 'Green', name: 'Unknown', date: '2026-10-17T12:00:00Z' } }))).toBeNull()
+  it('filtra sismos (EQ) — los cubre USGS — y tipos desconocidos', () => {
+    expect(mapGDACS(gdacsFeature({ eventtype: 'EQ' }))).toBeNull()
+    expect(mapGDACS(gdacsFeature({ eventtype: 'XX' }))).toBeNull()
   })
 
   it('filtra eventos sin geometría', () => {
-    expect(
-      mapGDACS(
-        gdacsFeature({
-          geometry: { type: 'Point', coordinates: [] as unknown as [number, number] },
-        })
-      )
-    ).toBeNull()
+    expect(mapGDACS(gdacsFeature({}, { type: 'Point', coordinates: [] }))).toBeNull()
   })
 
-  it('usa severidad por alertlevel: Green → low, Orange → medium', () => {
-    const green = mapGDACS(gdacsFeature({ properties: { eventid: 'G1', eventtype: 'FL', alertlevel: 'Green', name: 'Flood', date: '2026-10-17T12:00:00Z' } }))
-    expect(green!.severity).toBe('low')
-
-    const orange = mapGDACS(gdacsFeature({ properties: { eventid: 'G2', eventtype: 'TC', alertlevel: 'Orange', name: 'Cyclone', date: '2026-10-17T12:00:00Z' } }))
-    expect(orange!.severity).toBe('medium')
+  it('severidad por alertlevel: Green → low, Orange → medium, Red → critical', () => {
+    expect(mapGDACS(gdacsFeature({ alertlevel: 'Green' }))!.severity).toBe('low')
+    expect(mapGDACS(gdacsFeature({ alertlevel: 'Orange' }))!.severity).toBe('medium')
+    expect(mapGDACS(gdacsFeature({ alertlevel: 'Red' }))!.severity).toBe('critical')
+    expect(mapGDACS(gdacsFeature({ alertlevel: '' }))!.severity).toBe('medium')
   })
 
-  it('usa severidad numérica como fallback cuando no hay alertlevel', () => {
-    // Sin alertlevel → usa mapGDACSSeverity → 'medium' (default para TC)
-    const mapped = mapGDACS(
-      gdacsFeature({
-        properties: {
-          eventid: 'G3',
-          eventtype: 'TC',
-          alertlevel: '',
-          name: 'Storm',
-          date: '2026-10-17T12:00:00Z',
-          severity: 70,
-        },
-      })
-    )
-    expect(mapped).not.toBeNull()
-  })
-
-  it('guarda alertlevel y eventtype en rawData', () => {
-    const mapped = mapGDACS(gdacsFeature())
-    expect(mapped!.rawData.alertlevel).toBe('Orange')
-    expect(mapped!.rawData.eventtype).toBe('TC')
+  it('guarda alertlevel, eventtype, país y enlace al reporte en rawData', () => {
+    const { rawData } = mapGDACS(gdacsFeature({ alertlevel: 'Orange' }))!
+    expect(rawData.alertlevel).toBe('Orange')
+    expect(rawData.eventtype).toBe('TC')
+    expect(rawData.country).toBe('Marshall Islands')
+    expect(rawData.report).toContain('eventid=1001343')
   })
 })
 
@@ -223,7 +217,10 @@ describe('mapNOAA', () => {
         headline: 'Flood Warning issued',
         description: 'River flooding is imminent',
         severity: 'Severe',
-        starts: '2026-10-18T10:00:00Z',
+        // Fechas como las publica el NWS (no existe `starts`)
+        sent: '2026-10-18T09:55:00-05:00',
+        effective: '2026-10-18T09:55:00-05:00',
+        onset: '2026-10-18T10:00:00-05:00',
         sender: 'US-WS',
         areaDesc: 'Bogota',
       },
@@ -236,7 +233,9 @@ describe('mapNOAA', () => {
         headline: 'Flood Warning issued',
         description: 'River flooding is imminent',
         severity: 'Severe',
-        starts: '2026-10-18T10:00:00Z',
+        sent: '2026-10-18T09:55:00-05:00',
+        effective: '2026-10-18T09:55:00-05:00',
+        onset: '2026-10-18T10:00:00-05:00',
         sender: 'US-WS',
         areaDesc: 'Bogota',
         ...overrides.properties,
@@ -302,5 +301,18 @@ describe('mapNOAA', () => {
   it('mapea severidad Extreme → critical', () => {
     const mapped = mapNOAA(noaaAlert({ properties: { severity: 'Extreme' } }))
     expect(mapped!.severity).toBe('critical')
+  })
+
+  it('toma occurredAt de onset, y si falta, de effective o sent', () => {
+    expect(mapNOAA(noaaAlert())!.occurredAt.toISOString()).toBe('2026-10-18T15:00:00.000Z')
+    const sinOnset = mapNOAA(noaaAlert({ properties: { onset: null } as any }))
+    expect(sinOnset!.occurredAt.toISOString()).toBe('2026-10-18T14:55:00.000Z')
+  })
+
+  it('nunca devuelve una fecha inválida (antes tumbaba el insert)', () => {
+    const mapped = mapNOAA(
+      noaaAlert({ properties: { onset: 'no-es-fecha', effective: null, sent: undefined } as any })
+    )
+    expect(Number.isNaN(mapped!.occurredAt.getTime())).toBe(false)
   })
 })

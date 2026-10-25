@@ -79,7 +79,17 @@ function fakePrisma(rows: unknown[]): FakePrismaResult {
         }
         return { count }
       },
-      updateMany: async () => ({ count: 0 }),
+      // Aplica el `where` que usa el motor (eventId, userId in, channel)
+      updateMany: async ({ where, data }: { where: any; data: any }) => {
+        const target = inserted.filter(
+          (row) =>
+            row.eventId === where.eventId &&
+            (!where.userId?.in || where.userId.in.includes(row.userId)) &&
+            (!where.channel || row.channel === where.channel)
+        )
+        for (const row of target) Object.assign(row, data)
+        return { count: target.length }
+      },
       findMany: async () => inserted,
     },
   }
@@ -98,6 +108,19 @@ function makeFakeSocket() {
 describe('Motor de alertas push en vivo (integración con hub real)', () => {
   beforeEach(() => {
     vi.mocked(sendPush).mockClear()
+  })
+
+  it('con el WS abierto marca enviado solo el push: email y SMS quedan para el despachador', async () => {
+    const { prisma, inserted } = fakePrisma([preferenceRow()])
+    const app = await buildApp({ prisma })
+    const { socket } = makeFakeSocket()
+    app.hub.add('user-1', socket as any)
+
+    await matchEvent(app.prisma, makeEvent(), app.hub)
+
+    const status = Object.fromEntries(inserted.map((row) => [row.channel, row.status]))
+    expect(status.push).toBe('sent')
+    expect(status.email).toBe('pending')
   })
 
   it('empuja el AlertPayload al WS simulado cuando el evento entra en la zona', async () => {

@@ -36,6 +36,10 @@ const ConfigSchema = z.object({
   EONET_DAYS: z.coerce.number().default(30),
   GDACS_ENABLED: z.string().default('true'),
   GDACS_DAYS: z.coerce.number().default(30),
+  // La API vieja (`gdacsapi.php`) dejó de responder; esta es la actual.
+  GDACS_URL: z
+    .string()
+    .default('https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH'),
   GEOCODE_ENABLED: z.string().default('true'),
   NOMINATIM_URL: z.string().default('https://nominatim.openstreetmap.org'),
   INGEST_INTERVAL: z.coerce.number().default(300000),

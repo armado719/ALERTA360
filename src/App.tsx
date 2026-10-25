@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { WifiOff, X } from 'lucide-react'
 import Map from './components/Map'
 import LocationPanel from './components/LocationPanel'
+import SettingsPanel from './components/SettingsPanel'
 import Dashboard from './components/Dashboard'
 import Header from './components/Header'
 import AuthModal from './components/AuthModal'
@@ -19,6 +20,7 @@ import {
   deleteLocation as deleteLocationApi,
   getMe,
   setAuthToken,
+  DEMO_MODE,
   type AuthUser,
   type Location,
   type ServerNotification,
@@ -46,6 +48,7 @@ function App() {
   const [showErrorToast, setShowErrorToast] = useState(true)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [showLocationPanel, setShowLocationPanel] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [locations, setLocations] = useState<Location[]>([])
 
   // Registro Web Push (push offline) cuando el usuario está autenticado
@@ -72,6 +75,8 @@ function App() {
   }, [])
 
   useEffect(() => {
+    // En el demo público no hay backend: se entra directo al mapa.
+    if (DEMO_MODE) return
     const initAuth = async () => {
       const token = localStorage.getItem('alerta360_token')
       if (token) {
@@ -116,6 +121,13 @@ function App() {
 
   /* ---------- Eventos ---------- */
   const loadEvents = useCallback(async () => {
+    if (DEMO_MODE) {
+      setDemo(true)
+      setError('Demo público: eventos simulados de las últimas 24 h, sin backend conectado.')
+      setEvents(DEMO_EVENTS)
+      setLoading(false)
+      return
+    }
     try {
       setLoading(true)
       const data = await fetchDisasterEvents(filters)
@@ -211,6 +223,7 @@ function App() {
         notificationsOpen={notificationsOpen}
         onLocationClick={() => setShowLocationPanel(true)}
         locationsCount={locations.length}
+        onSettingsClick={() => setShowSettings(true)}
       />
 
       <NotificationsPanel
@@ -289,6 +302,17 @@ function App() {
         locations={locations}
         onSave={saveLocation}
         onDelete={deleteLocation}
+      />
+
+      <SettingsPanel
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        user={user}
+        onRequestLogin={() => {
+          setShowSettings(false)
+          setAuthMode('login')
+          setShowAuthModal(true)
+        }}
       />
 
       <AuthModal

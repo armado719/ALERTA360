@@ -89,8 +89,11 @@ export interface NOAAAlertProperties {
   headline: string
   description: string
   severity: string
-  starts: string
-  ends?: string
+  // El NWS no publica `starts`: el inicio está en `onset` (o `effective`/`sent`)
+  onset?: string | null
+  effective?: string | null
+  sent?: string | null
+  ends?: string | null
   sender: string
   areaDesc: string
 }
@@ -185,6 +188,12 @@ export function mapNOAA(alert: NOAAAlert) {
   if (coords.longitude < -180 || coords.longitude > 180) return null
   if (isNullIsland(coords)) return null
 
+  // Primera fecha válida; una inválida hacía fallar el insert de toda alerta
+  const occurredAt =
+    [props.onset, props.effective, props.sent]
+      .map((value) => (value ? new Date(value) : null))
+      .find((date): date is Date => !!date && !Number.isNaN(date.getTime())) ?? new Date()
+
   return {
     type: mapNOAAType(props.event),
     source: 'noaa',
@@ -195,7 +204,7 @@ export function mapNOAA(alert: NOAAAlert) {
     title: props.event,
     description: props.description || props.headline || '',
     severity,
-    occurredAt: new Date(props.starts),
+    occurredAt,
     rawData: { headline: props.headline, region: props.sender },
   }
 }
@@ -364,20 +373,25 @@ export function mapEONET(event: EONETEvent) {
 // ============================================================================
 // GDACS (Global Alert for Disaster) API
 // ============================================================================
-// https://www.gdacs.org/gdacsapi/gdacsapi.php
+// https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH (config.GDACS_URL)
 // Eventos multi-riesgo globales: ciclones (TC), inundaciones (FL),
 // sismos (EQ), volcanes (VO), incendios (WF), sequías (DR). Sin clave API.
 //
 // NOTA: GDACS usa [longitude, latitude] (GeoJSON) en geometry.coordinates.
+// Las fechas (`fromdate`) vienen en UTC sin zona horaria.
 
 interface GDACSProperties {
-  eventid: string
+  eventid: number | string
   eventtype: string
   alertlevel: string
   name: string
-  date: string
+  fromdate?: string
   description?: string
-  severity?: number
+  country?: string
+  // La API devuelve el texto "true"/"false"
+  iscurrent?: string | boolean
+  severitydata?: { severity?: number; severitytext?: string; severityunit?: string }
+  url?: { report?: string }
 }
 
 interface GDACSGeometry {
@@ -406,12 +420,12 @@ const GDACS_TYPE_MAP: Record<string, string> = {
   DR: 'drought',
 }
 
-/** GDACS alertlevel → severidad ALERTA360 (green→low, orange→medium, red→high) */
+/** GDACS alertlevel → severidad ALERTA360 (green→low, orange→medium, red→critical) */
 const GDACS_SEVERITY_MAP: Record<string, string> = {
   Green: 'low',
   Orange: 'medium',
-  // GDACS no usa "Red" como nivel; usa severidad numérica cuando alertlevel = "Red"
-  Red: 'high',
+  // Rojo = impacto humanitario severo previsto
+  Red: 'critical',
 }
 
 /**
@@ -429,19 +443,44 @@ function mapGDACSSeverity(eventtype: string, severityNum?: number): string {
   return 'medium'
 }
 
+// La API pagina de a 100 eventos (no admite otro tamaño); los incendios (WF)
+// suelen llenar la primera página, así que se piden unas cuantas más.
+const GDACS_PAGE_SIZE = 100
+const GDACS_MAX_PAGES = 3
+
 async function fetchGDACS(): Promise<GDACSFeature[]> {
-  // Lanza en error: el circuit breaker del ciclo de ingesta lo catcha.
-  const res = await axios.get<GDACSResponse>('https://www.gdacs.org/gdacsapi/gdacsapi.php', {
-    params: {
-      eventlist: 'ALL',
-      days: config.GDACS_DAYS,
-    },
-    timeout: 10000,
-    headers: {
-      'User-Agent': 'ALERTA360 (arc.fullstack30@gmail.com)',
-    },
-  })
-  return res.data?.features ?? []
+  const day = (d: Date) => d.toISOString().slice(0, 10)
+  const params = {
+    eventlist: 'TC;FL;VO;DR;WF', // sin EQ: los sismos los cubre USGS
+    alertlevel: 'Green;Orange;Red',
+    fromDate: day(new Date(Date.now() - config.GDACS_DAYS * 86_400_000)),
+    toDate: day(new Date()),
+  }
+  const byId = new Map<string, GDACSFeature>()
+  for (let page = 1; page <= GDACS_MAX_PAGES; page++) {
+    let features: GDACSFeature[]
+    try {
+      const res = await axios.get<GDACSResponse>(config.GDACS_URL, {
+        params: { ...params, pagenumber: page },
+        // GDACS es lento e irregular (5 s a >30 s por página)
+        timeout: 45000,
+        headers: { 'User-Agent': 'ALERTA360 (arc.fullstack30@gmail.com)' },
+      })
+      features = res.data?.features ?? []
+    } catch (err) {
+      // La primera página lanza: el circuit breaker del ciclo lo registra.
+      // Si falla una posterior, se usa lo que ya llegó. GDACS responde 400
+      // cuando se pide una página más allá del final: no es un fallo.
+      if (page === 1) throw err
+      if ((err as { response?: { status?: number } }).response?.status !== 400) {
+        logger.warn({ page, err: (err as Error).message }, '[INGESTION] GDACS: página incompleta')
+      }
+      break
+    }
+    for (const f of features) byId.set(`${f.properties.eventtype}-${f.properties.eventid}`, f)
+    if (features.length < GDACS_PAGE_SIZE) break
+  }
+  return [...byId.values()]
 }
 
 /**
@@ -458,6 +497,8 @@ export function mapGDACS(feature: GDACSFeature) {
   // GDACS: sismos ya vienen de USGS con mayor precisión → los filtramos
   // para evitar duplicados. Si no hay USGS, se pueden habilitar.
   if (eventType === 'EQ') return null
+  // Evento ya terminado: no debe disparar alertas nuevas
+  if (String(props.iscurrent) === 'false') return null
 
   if (!feature.geometry) return null
   const coords = feature.geometry.coordinates
@@ -467,26 +508,33 @@ export function mapGDACS(feature: GDACSFeature) {
   const lat = Array.isArray(coords[0]) ? coords[0][1] : coords[1]
   if (typeof lon !== 'number' || typeof lat !== 'number') return null
 
-  const severity = GDACS_SEVERITY_MAP[props.alertlevel] ?? mapGDACSSeverity(eventType, props.severity)
-  const occurredAt = props.date ? new Date(props.date) : new Date()
+  const severityValue = props.severitydata?.severity
+  const severity = GDACS_SEVERITY_MAP[props.alertlevel] ?? mapGDACSSeverity(eventType, severityValue)
+  // `fromdate` viene sin zona horaria y es UTC
+  const fromdate = props.fromdate && !/[zZ]|[+-]\d\d:\d\d$/.test(props.fromdate) ? `${props.fromdate}Z` : props.fromdate
+  const parsed = fromdate ? new Date(fromdate) : null
+  const occurredAt = parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date()
   const title = props.name || `${mappedType} event`
 
   return {
     type: mappedType,
     source: 'gdacs' as const,
-    externalId: props.eventid,
+    // eventid solo es único dentro de cada tipo de evento
+    externalId: `gdacs-${eventType}-${props.eventid}`,
     latitude: lat,
     longitude: lon,
-    magnitude: props.severity ?? null,
-    intensity: eventType === 'EQ' ? props.severity : null,
+    magnitude: severityValue ?? null,
+    intensity: null,
     title,
-    description: props.description || title,
+    description: props.severitydata?.severitytext || props.description || title,
     severity,
     occurredAt,
     rawData: {
       alertlevel: props.alertlevel,
       eventtype: eventType,
-      date: props.date,
+      fromdate: props.fromdate,
+      country: props.country,
+      report: props.url?.report,
     },
   }
 }
@@ -596,18 +644,31 @@ async function fetchNHC(): Promise<NHCResponseFeature[]> {
 }
 
 const NHC_BASIN_MAP: Record<string, string> = {
-  AL: 'Atlantic',
-  EP: 'Eastern Pacific',
-  CP: 'Central Pacific',
-  WP: 'Western Pacific (JTWC)',
+  AL: 'Atlántico',
+  EP: 'Pacífico oriental',
+  CP: 'Pacífico central',
+}
+
+// `stormtype` de la capa: sin viento en los atributos, el tipo es la mejor
+// señal de intensidad (TD < 34 kt, TS 34-63 kt, HU >= 64 kt, MH = categoría 3+).
+const NHC_STORM_TYPES: Record<string, { label: string; severity: string }> = {
+  TD: { label: 'Depresión tropical', severity: 'low' },
+  STD: { label: 'Depresión subtropical', severity: 'low' },
+  PTC: { label: 'Potencial ciclón tropical', severity: 'low' },
+  TS: { label: 'Tormenta tropical', severity: 'medium' },
+  STS: { label: 'Tormenta subtropical', severity: 'medium' },
+  HU: { label: 'Huracán', severity: 'high' },
+  MH: { label: 'Huracán mayor', severity: 'critical' },
 }
 
 /**
  * Mapea un feature del cono NHC a un evento ALERTA360.
- * - type 'hurricane' (ciclón tropical)
- * - severity por viento máximo (kts): 96+ critical, 64-95 high, 34-63 medium, <34 low
- * - rawData.cone = GeoJSON Polygon del cono de incertidumbre
- * - externalId único por (wallet/storm-id + advisory)
+ * - Un evento por tormenta: `externalId = nhc-<stormId>` (p. ej. `nhc-EP222026`),
+ *   sacado de `idp_source` (`ep222026-017_5day_pgn`). Cada aviso nuevo actualiza
+ *   ese evento en vez de crear otro.
+ * - Sin identificador estable se descarta: un id basado en la hora duplicaba el
+ *   ciclón en cada ciclo de ingesta.
+ * - severity por `stormtype`; rawData.cone = GeoJSON Polygon del cono.
  */
 export function mapNHC(feature: NHCResponseFeature) {
   if (!feature.geometry || feature.geometry.type !== 'Polygon') return null
@@ -620,38 +681,61 @@ export function mapNHC(feature: NHCResponseFeature) {
   if (!centroid || isNullIsland(centroid)) return null
 
   const props = feature.properties || {}
-  const wind = Number(props.WIND_MAX_KTS ?? props.maxWind ?? props.wind ?? 0) || 0
+  const match = /^([a-z]{2}\d{6})-(\d+)/i.exec(String(props.idp_source ?? ''))
+  if (!match) return null
+  const stormId = match[1].toUpperCase()
+  const advisory = String(props.advisnum ?? Number(match[2]))
 
-  let severity = 'low'
-  if (wind >= 96) severity = 'critical'
-  else if (wind >= 64) severity = 'high'
-  else if (wind >= 34) severity = 'medium'
-
-  const wallet = String(props.STORMID ?? props.id ?? props.wallet ?? '')
-  const stormNum = String(props.STORMNUM ?? props.num ?? '')
-  const basinPrefix = wallet.slice(0, 2).toUpperCase()
-  const basin = NHC_BASIN_MAP[basinPrefix] ?? props.BASIN ?? props.basin ?? ''
-  const name =
-    props.STORMNAME ?? props.NAME ?? props.stormName ?? props.NAME_STORM ??
-    (basin && stormNum ? `${basin} ${stormNum}` : 'Ciclón tropical')
-
-  const startedAt = typeof props.ONDATE === 'string' ? new Date(props.ONDATE) : new Date()
-
-    return {
-      type: 'hurricane' as const,
-      source: 'nhc' as const,
-      externalId: `nhc-${wallet}-${typeof props.ADATE === 'string' ? props.ADATE : (typeof props.advTime === 'string' ? props.advTime : startedAt.toISOString())}`,
-      latitude: centroid.latitude,
-      longitude: centroid.longitude,
-      magnitude: wind > 0 ? wind : null,
-      intensity: wind > 0 ? Math.round(wind) : null,
-      title: `${name}${wind ? ` — ${wind} kts` : ''}`,
-      description: `${name} — cono de incertidumbre del NHC (${basin || 'zona'})`,
-      severity,
-      occurredAt: !isNaN(startedAt.getTime()) ? startedAt : new Date(),
-      rawData: { ...props, cone: feature.geometry } as any,
-    }
+  const kind = NHC_STORM_TYPES[String(props.stormtype ?? '').toUpperCase()] ?? {
+    label: 'Ciclón tropical',
+    severity: 'medium',
   }
+  const name = String(props.stormname ?? stormId)
+  const basin = NHC_BASIN_MAP[String(props.basin ?? stormId.slice(0, 2)).toUpperCase()] ?? 'zona tropical'
+  const issued = Number(props.idp_filedate)
+  const occurredAt = Number.isFinite(issued) && issued > 0 ? new Date(issued) : new Date()
+
+  return {
+    type: 'hurricane' as const,
+    source: 'nhc' as const,
+    externalId: `nhc-${stormId}`,
+    latitude: centroid.latitude,
+    longitude: centroid.longitude,
+    magnitude: null,
+    intensity: null,
+    title: `${kind.label} ${name}`,
+    description: `${kind.label} ${name} — aviso ${advisory} del NHC (${basin}). Cono de incertidumbre a 5 días.`,
+    severity: kind.severity,
+    occurredAt,
+    rawData: { ...props, stormId, advisory, cone: feature.geometry } as any,
+  }
+}
+
+/**
+ * Guarda un ciclón: la primera vez lo crea (y avisa al motor de alertas); en
+ * los avisos siguientes actualiza posición, cono, severidad y `fetchedAt` del
+ * mismo evento, sin volver a alertar.
+ */
+export async function saveNHCEvent(
+  prisma: PrismaClient,
+  mapped: NonNullable<ReturnType<typeof mapNHC>>,
+  hooks?: IngestionHooks
+): Promise<'created' | 'updated'> {
+  const existing = await prisma.disasterEvent.findFirst({
+    where: { externalId: mapped.externalId, source: 'nhc' },
+  })
+  if (existing) {
+    const { externalId, source, ...changes } = mapped
+    await prisma.disasterEvent.update({
+      where: { id: existing.id },
+      data: { ...changes, isActive: true, stale: false, fetchedAt: new Date() },
+    })
+    return 'updated'
+  }
+  const created = await prisma.disasterEvent.create({ data: { ...mapped, isActive: true } })
+  await notifyHooks(hooks, created)
+  return 'created'
+}
 
 // ============================================================================
 // Ingestion cycle
@@ -885,13 +969,7 @@ export async function runIngestion(
       try {
         const mapped = mapNHC(feature)
         if (!mapped) continue
-        const existing = await prisma.disasterEvent.findFirst({
-          where: { externalId: mapped.externalId, source: 'nhc' },
-        })
-        if (existing) continue
-        const created = await prisma.disasterEvent.create({ data: { ...mapped, isActive: true } })
-        nhcInserted++
-        await notifyHooks(hooks, created)
+        if ((await saveNHCEvent(prisma, mapped, hooks)) === 'created') nhcInserted++
       } catch (err) {
         ingestionErrorsTotal.inc({ source: 'nhc' })
         logger.error({ err }, '[INGESTION] Error inserting NHC event')

@@ -1,7 +1,27 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Globe2 } from 'lucide-react'
-import { login, register, AuthUser } from '../services/api'
+import { login, register, AuthUser, DEMO_MODE } from '../services/api'
+
+const FIELD_ERRORS: Record<string, string> = {
+  email: 'El correo no es válido.',
+  username: 'El nombre de usuario debe tener al menos 3 caracteres.',
+  password: 'La contraseña debe tener al menos 8 caracteres.',
+}
+
+/** Traduce la respuesta del backend a un mensaje que el usuario entienda. */
+function authErrorMessage(err: any): string {
+  const res = err?.response
+  if (!res) return 'No se pudo conectar con el servidor. ¿Está corriendo el backend?'
+  if (res.status === 401) return 'Correo o contraseña incorrectos.'
+  if (res.status === 409) return 'Ya existe una cuenta con ese correo.'
+  if (res.status === 400) {
+    const fields: string[] = (res.data?.details ?? []).map((d: any) => d.path?.[0])
+    const messages = [...new Set(fields)].map((f) => FIELD_ERRORS[f]).filter(Boolean)
+    return messages.length ? messages.join(' ') : 'Revisa los datos del formulario.'
+  }
+  return 'El servidor tuvo un problema. Inténtalo de nuevo en unos segundos.'
+}
 
 interface AuthModalProps {
   isOpen: boolean
@@ -26,6 +46,10 @@ export default function AuthModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (DEMO_MODE) {
+      setErrorMsg('El demo público no tiene backend: el inicio de sesión está desactivado.')
+      return
+    }
     setIsLoading(true)
     setErrorMsg('')
     try {
@@ -34,7 +58,7 @@ export default function AuthModal({
         : await register(email, username, password)
       onAuthSuccess(result.user)
     } catch (err: any) {
-      setErrorMsg(err?.response?.data?.error || err.message || 'Error de autenticación')
+      setErrorMsg(authErrorMessage(err))
     } finally {
       setIsLoading(false)
     }
@@ -73,7 +97,10 @@ export default function AuthModal({
             <p className="text-[10.5px] text-slate-500">ALERTA360 · Centro de Mando</p>
           </div>
           <button
-            onClick={() => onModeChange(mode === 'login' ? 'register' : 'login')}
+            onClick={() => {
+              setErrorMsg('')
+              onModeChange(mode === 'login' ? 'register' : 'login')
+            }}
             className="ml-auto text-[11px] text-cyan-300/80 hover:text-cyan-200 transition"
           >
             {mode === 'login' ? '¿No tienes cuenta?' : '¿Ya tienes cuenta?'}
@@ -99,6 +126,7 @@ export default function AuthModal({
                 className={inputClass}
                 placeholder="Tu nombre"
                 required
+                minLength={3}
               />
             </div>
           )}
@@ -126,9 +154,9 @@ export default function AuthModal({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className={inputClass}
-              placeholder="••••••••"
+              placeholder={mode === 'register' ? 'Mínimo 8 caracteres' : '••••••••'}
               required
-              minLength={8}
+              minLength={mode === 'register' ? 8 : undefined}
             />
           </div>
 

@@ -73,6 +73,16 @@ export function reportSuccess(source: string): void {
   state.status = 'ok'
 }
 
+/**
+ * Lo útil de un error para el log. Un AxiosError serializado completo trae
+ * ~50 líneas de config por fallo y tapa el resto del log.
+ */
+function summarizeError(error: unknown) {
+  if (!error || typeof error !== 'object') return error
+  const e = error as { message?: string; code?: string; response?: { status?: number }; config?: { url?: string } }
+  return { message: e.message, code: e.code, status: e.response?.status, url: e.config?.url }
+}
+
 /** Marca un fetch fallido. 3 fallos consecutivos → circuito abierto. */
 export function reportFailure(source: string, error?: unknown): void {
   const state = getState(source)
@@ -82,13 +92,16 @@ export function reportFailure(source: string, error?: unknown): void {
   if (state.consecutiveFailures >= FAILURE_THRESHOLD) {
     if (state.status !== 'down') {
       logger.warn(
-        { source, failures: state.consecutiveFailures, error },
+        { source, failures: state.consecutiveFailures, error: summarizeError(error) },
         `[SOURCES] Circuit breaker abierto para ${source} — marcando down`
       )
     }
     state.status = 'down'
   } else {
-    logger.warn({ source, failures: state.consecutiveFailures, error }, `[SOURCES] Fetch falló para ${source}`)
+    logger.warn(
+      { source, failures: state.consecutiveFailures, error: summarizeError(error) },
+      `[SOURCES] Fetch falló para ${source}`
+    )
     state.status = 'degraded'
   }
 }

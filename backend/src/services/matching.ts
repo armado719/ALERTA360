@@ -265,13 +265,15 @@ export async function matchEvent(
       if (byChannel[channel] > 0) notificationsCreated.inc({ channel }, byChannel[channel])
     }
 
-    const pushedLive = pushToSockets(event, results, candidates, hub)
+    const liveUserIds = pushToSockets(event, results, candidates, hub)
+    const pushedLive = liveUserIds.length
 
-    // Si el usuario tenía el socket abierto, la notificación ya salió.
+    // Si el usuario tenía el socket abierto, su push ya salió. Solo el canal
+    // push: email y SMS siguen `pending` para que el despachador los envíe.
     if (pushedLive > 0) {
       await prisma.notification
         .updateMany({
-          where: { eventId: event.id, userId: { in: results.map(r => r.userId) } },
+          where: { eventId: event.id, userId: { in: liveUserIds }, channel: 'push' },
           data: { status: 'sent' },
         })
         .catch(err => logger.warn({ err }, '[MATCHING] No se pudo marcar como enviada'))
@@ -299,16 +301,17 @@ export async function matchEvent(
   }
 }
 
+/** Empuja la alerta por WebSocket; devuelve los usuarios que la recibieron en vivo. */
 function pushToSockets(
   event: MatchableEvent,
   results: MatchResult[],
   candidates: MatchCandidate[],
   hub?: AlertHub
-): number {
-  if (!hub) return 0
+): string[] {
+  if (!hub) return []
 
   const subs = new Map<string, unknown>(candidates.map((c) => [c.userId, c.pushSubscription]))
-  let delivered = 0
+  const delivered: string[] = []
   for (const result of results) {
     const payload: AlertPayload = {
       type: 'alert',
@@ -323,7 +326,7 @@ function pushToSockets(
     }
     const live = hub.sendToUser(result.userId, payload)
     if (live > 0) {
-      delivered++
+      delivered.push(result.userId)
       continue
     }
     // Sin WebSocket conectado: fallback a push offline (Web Push).

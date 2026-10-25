@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:demo": "vite build --mode demo --base=/ALERTA360/",
     "preview": "vite preview",
     "type-check": "tsc --noEmit"
   },
