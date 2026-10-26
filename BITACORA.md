@@ -2,7 +2,7 @@
 
 **Proyecto:** ALERTA360 — Plataforma Global de Alertas Tempranas para Desastres Naturales  
 **Última actualización:** 2026-10-25  
-**Versión actual:** 0.5.0 — MVP Fases 1-3 + infraestructura de producción + motor de alertas (WebSocket, push offline, email, SMS) + zonas círculo/polígono + catálogo de mejoras Fase 4 (#1–#7) + fuente NHC (A4, sin commitear)  
+**Versión actual:** 0.5.0 — MVP Fases 1-3 + infraestructura de producción + motor de alertas (WebSocket, push offline, email, SMS) + zonas círculo/polígono + catálogo de mejoras Fase 4 (#1–#7) + fuentes NHC (A4) y lluvia del IDEAM (A5, primera fuente colombiana)  
 **Versión de la bitácora:** 1.4
 
 ---
@@ -25,14 +25,36 @@ Este documento registra **todos los cambios significativos** del proyecto ALERTA
 | `tsc --noEmit` backend | ✅ 0 errores |
 | `tsc --noEmit` frontend | ✅ 0 errores |
 | Build frontend (`vite build`) | ✅ 2.465 módulos · `index` 760 kB (247 kB gzip) + `Map3D` 812 kB (221 kB gzip) · aviso de tamaño de chunk |
-| Tests backend | 146 en 16 archivos — ✅ todos pasan por archivo · ⚠️ en la suite completa (`vitest run`) 2 tests de `alert-engine.int` y los hooks de `routes`/`docs` fallan por **timeout** (5 s / 10 s) cuando la máquina está cargada; aislados pasan 19/19 |
-| Cambios sin commitear | NHC (A4) en `ingestion.ts` + `config.ts` + `test/nhc.test.ts` + `backend/.env.example` + `.env.production.example` + `docker-compose.prod.yml`; `deploy.yml`; borrado de `FASE_1/2/3_RESUMEN.md`; `MEJORAS_DESDE_WORLD_INTEL.md` sin versionar |
+| Tests backend | ✅ 174/174 en 18 archivos con la suite completa (`vitest run`). Con la máquina muy cargada llegaron a fallar por timeout `alert-engine.int` y los hooks de `routes`/`docs`; no se repitió en las últimas ejecuciones |
+| Cambios sin commitear | Ninguno. Fuera del repo a propósito: `.claude/` (configuración local) e `IDEAN.MD` (prompt usado con opencode) |
 
 ---
 
 ## 🗓️ Historial de Cambios
 
-### **2026-10-25 — Ingesta: NHC duplicado, fechas de NOAA y GDACS 404 ⚠️ sin commitear**
+### **2026-10-25 — IDEAM lluvia diaria (A5): primera fuente colombiana**
+
+#### Diagnóstico (con datos reales del 24-oct):
+- Ninguna entidad colombiana publica alertas en tiempo real con API pública (SGC: FDSN con *Access Denied*; IDEAM: alertas solo en PDF/visor FEWS; UNGRD: solo histórico). La única viable es la precipitación del IDEAM en datos.gov.co (`s54a-sgyg`), publicada **una vez al día** con los datos del día anterior → información de contexto, no alerta temprana.
+- Lecturas cada 10 min (144/día). Hay **dos sensores** que miden la misma lluvia: `0240` (488 estaciones) y `0257` GPRS (20 estaciones). Sumarlos duplicaba la lluvia (Armenia: 44,3 mm salía 88,5 mm). Regla: sumar por (estación, sensor) y tomar el **mayor**.
+- Umbrales aprobados: 50–99 mm `medium` "Lluvia fuerte" · 100–199 mm `high` "Lluvia muy fuerte" · ≥200 mm `critical` "Lluvia extrema" · >500 mm descartado. Alerta a los usuarios ("ayer" solo si el día es realmente ayer). Apagada por defecto (`IDEAM_ENABLED=false`).
+- Implementado por opencode con el prompt `IDEAN.MD`; revisado aquí en dos rondas (bugs de tildes "EdéN", nombres truncados "[2502", test de "ayer" dependiente del reloj y bitácora mal ubicada, todos corregidos).
+
+#### Cambios Realizados:
+- ✅ **config.ts** — variables `IDEAM_ENABLED`, `IDEAM_RAIN_URL`, `IDEAM_RAIN_MIN_MM`, `IDEAM_TIMEOUT`.
+- ✅ **health.ts** — `registerSource` acepta `{ staleAfterMs }`; `updateFreshness` usa umbral por fuente (3 h IDEAM), retrocompatible.
+- ✅ **ingestion.ts** — `IDEAMRow`, `IDEAMStationTotal`, `ideamTargetDay`, `pickStationTotals`, `mapIDEAMRain`, `fetchIDEAMRain`, `ideamCleanStation`; throttle `lastIDEAMSuccessAt` (1 h); bloque IDEAM en `runIngestion` con circuit breaker, dedup por `externalId`, notificaciones; log de throttle a `debug`.
+- ✅ **Tests** — `test/ideam.test.ts` (16 tests) + caso `staleAfterMs` en `test/sources.test.ts`.
+- ✅ **Env/infra** — `.env.example`, `.env.production.example`, `docker-compose.prod.yml`.
+
+#### Estado:
+- ✅ TSC backend 0 · suite completa 174/174 (18 archivos)
+- ✅ API en vivo (día 2026-10-24): 20 filas → 20 estaciones → 20 eventos, 20 `externalId` distintos, 0 títulos con mayúscula tras tilde; Armenia (0026125061) no aparece inflada
+- ✅ Ciclo real en el backend local (`IDEAM_ENABLED=true` solo en `backend/.env`): primera consulta → IDEAM `ok` y **20 eventos** (p. ej. "Lluvia extrema ayer (24 oct): 289 mm en Rio Iro, Rio Iró (Santa Rita) (Choco)", "Lluvia muy fuerte ayer (24 oct): 122 mm en Minca, Santa Marta (Magdalena)"); tras reiniciar el backend y volver a consultar los mismos datos → siguen **20**, sin duplicados
+- ℹ️ 0 alertas enviadas: ningún usuario tiene zonas cerca de esas estaciones. Las alertas solo salen al crearse un evento nuevo.
+
+
+### **2026-10-25 — Ingesta: NHC duplicado, fechas de NOAA y GDACS 404** · `cd18630`
 #### Diagnóstico (con respuestas reales de cada fuente):
 - 🐞 **NHC duplicaba los ciclones cada 5 min** (bug de A4): `mapNHC` leía campos inventados (`STORMID`, `STORMNAME`, `WIND_MAX_KTS`) que la capa real no tiene (`idp_source`, `stormname`, `stormtype`, `basin`; **sin viento**). Sin identificador, el `externalId` caía en la hora actual → un evento nuevo por ciclo (22 duplicados en la BD local), título genérico y severidad siempre `low`.
 - 🐞 **NOAA no guardaba ninguna alerta**: `occurredAt = new Date(props.starts)`, pero el NWS no publica `starts` (0 de 368 alertas reales); trae `onset`/`effective`/`sent`. Toda alerta fallaba con `Invalid Date`.
@@ -53,7 +75,7 @@ Este documento registra **todos los cambios significativos** del proyecto ALERTA
 - ✅ ~90 min de ciclos reales: NOAA inserta 1–2 alertas por ciclo; NHC sin duplicados; GDACS insertó 54 y 81 eventos
 - ⚠️ GDACS es inestable (a veces >45 s o 400 en la página 1); el circuit breaker lo aísla. Hubo cortes de DNS (`ENOTFOUND`) hacia NOAA y NASA desde la red local, ajenos al código.
 
-### **2026-10-25 — Inicio de sesión, panel de Configuración y panel de alertas más grande ⚠️ sin commitear**
+### **2026-10-25 — Inicio de sesión, panel de Configuración y panel de alertas más grande** · `cd18630`
 #### Diagnóstico del inicio de sesión:
 - 🐞 **BD local desactualizada:** faltaban 8 columnas (`User.phone`, `User.pushSubscription`, `DisasterEvent.fetchedAt/stale`, `Location.shape/polygon`, `Notification.error`, `UserPreference.minSeverity`). Registro, login y `/api/events` respondían 500. Se arregla con `npx prisma db push` en `backend/` (solo agrega columnas e índices; verificado: 2 notificaciones, 0 duplicados para el nuevo `@@unique`).
 - 🐞 **El registro no devolvía token:** la UI mostraba al usuario conectado, pero zonas, alertas y preferencias fallaban con 401 y al recargar pedía entrar otra vez.
@@ -94,7 +116,7 @@ Este documento registra **todos los cambios significativos** del proyecto ALERTA
 - ✅ **`src/components/LocationPanel.tsx`** — `GEO_ERRORS` por código (1 permiso bloqueado → candado del navegador; 2 no disponible → ubicación de Windows; 3 tiempo agotado). `enableHighAccuracy: false`, `timeout` 15 s y `maximumAge` 5 min: en un PC sin GPS la alta precisión agotaba los 8 s.
 - ✅ Probado con permiso denegado: muestra el mensaje del candado.
 
-### **2026-10-25 — Demo público gratuito en GitHub Pages ⚠️ sin commitear**
+### **2026-10-25 — Demo público gratuito en GitHub Pages** · `cd18630`
 #### Cambios Realizados:
 - ✅ **`src/services/api.ts`** — `DEMO_MODE` (`import.meta.env.MODE === 'demo'`).
 - ✅ **`src/App.tsx`** — en modo demo no llama al backend, carga `DEMO_EVENTS` directo, no abre el login automáticamente y avisa "Demo público: eventos simulados…".
@@ -107,7 +129,7 @@ Este documento registra **todos los cambios significativos** del proyecto ALERTA
 - ✅ Probado con `vite preview` en `/ALERTA360/`: mapa 2D con 178 eventos, vista 3D (chunk diferido), login desactivado con aviso, 0 errores de consola, 0 peticiones a `/api`
 - ⏳ Activar una vez: Settings → Pages → Source: **GitHub Actions**
 
-### **2026-10-25 — Fix CI: el job "Backend Build & Test" fallaba siempre**
+### **2026-10-25 — Fix CI: el job "Backend Build & Test" fallaba siempre** · `e508686`
 #### Cambios Realizados:
 - ✅ **`backend/vitest.config.ts`** — `css: { postcss: {} }`. Vite busca un `postcss.config.js` hacia arriba desde `backend/` y encontraba el del frontend (raíz), que carga `tailwindcss`. El job de backend solo instala `backend/node_modules`, así que Vitest abortaba antes de ejecutar ningún test. En local no se notaba porque la raíz tiene `tailwindcss` instalado.
 - Venía fallando en `main` desde que se añadieron los tests al CI (`f071dee`).
@@ -115,7 +137,7 @@ Este documento registra **todos los cambios significativos** del proyecto ALERTA
 #### Estado:
 - ✅ Clon limpio sin `.env` + `npm ci` solo en `backend/` + `npm test`: 146/146 (16 archivos)
 
-### **2026-10-25 — Reorganización de la bitácora (v1.3 → v1.4)**
+### **2026-10-25 — Reorganización de la bitácora (v1.3 → v1.4)** · `dea114e`
 #### Cambios Realizados:
 - ✅ Orden cronológico restaurado según la fecha de los commits; cuatro bloques sin título ni fecha ahora tienen su entrada.
 - ✅ Eliminados duplicados: B3 escalada (2 entradas), motor de alertas del 17/18-10 (2 entradas) y Fase 3 producción (3 entradas fusionadas en una).
@@ -126,7 +148,7 @@ Este documento registra **todos los cambios significativos** del proyecto ALERTA
 
 ---
 
-### **2026-10-20 — FASE 4 A4: fuente NHC (ciclones tropicales) ⚠️ sin commitear**
+### **2026-10-20 — FASE 4 A4: fuente NHC (ciclones tropicales)** · `dea114e` (reescrita en `cd18630`)
 #### Cambios Realizados:
 - ✅ **`backend/src/services/ingestion.ts`** — Fuente nueva **NHC Forecast Cone** (ArcGIS REST de NOAA, capa 7 de `NHC_tropical_weather_summary`):
   - `registerSource('nhc')` + `fetchNHC()` (GeoJSON, `User-Agent` identificado).
@@ -142,14 +164,14 @@ Este documento registra **todos los cambios significativos** del proyecto ALERTA
 - ✅ `NHC_ENABLED` / `NHC_URL` / `NHC_TIMEOUT` documentados en `backend/.env.example` y `.env.production.example`, y reenviados al backend en `docker-compose.prod.yml` (2026-10-25). Antes, compose no los pasaba al contenedor y un `NHC_ENABLED=false` en producción se habría ignorado.
 - ℹ️ `NHC_ENABLED` arranca en `true`, a diferencia de Meteoalarm/Digest (`false`).
 
-### **Cambios en el árbol de trabajo (fecha sin registrar) ⚠️ sin commitear**
+### **Ajustes de despliegue y documentación** · `dea114e`
 - ✅ **`.github/workflows/deploy.yml`** — `NODE_VERSION` 20 → 22; nuevo paso **"Validar secretos de despliegue"** (falla si faltan `PROD_HOST`, `PROD_USER` o `PROD_SSH_KEY`); corregido el nombre del archivo `.env.produccion` → `.env.production` (3 sitios: despliegue y rollback).
   - ✅ El paso nuevo había quedado insertado **en medio** de "Validar artefacto" y se llevó `test -f dist/status.html` y `du -sh dist` a "Validar secretos". Devueltos a su paso el 2026-10-25 (YAML validado).
   - ✅ Nombre unificado como `.env.production` también en el comentario de `.env.production.example` y en `docs/FASE_3_PRODUCCION.md` (2026-10-25). Antes un servidor montado siguiendo el runbook habría fallado al desplegar.
   - ✅ El runbook (línea 109) copiaba desde `.env.example` (el del frontend, sin `DB_*`, `JWT_SECRET` ni `GRAFANA_PASSWORD`). Ahora hace `cp .env.production.example .env.production`. El comentario de `nginx.conf:137` también usa el nombre nuevo (2026-10-25).
   - ℹ️ `.gitignore` ignora ambos nombres a propósito, para que un `.env.produccion` antiguo nunca se suba.
 - ✅ Borrados `FASE_1_RESUMEN.md`, `FASE_2_RESUMEN.md` y `FASE_3_RESUMEN.md`; el detalle sigue en `AUDITORIA_FASE_N.md` y en esta bitácora.
-- ⏳ `MEJORAS_DESDE_WORLD_INTEL.md` (el catálogo de mejoras que se usa en la Fase 4) aún no está versionado.
+- ✅ Versionado `MEJORAS_DESDE_WORLD_INTEL.md` (el catálogo de mejoras que se usa en la Fase 4).
 
 ---
 
@@ -575,7 +597,9 @@ ALERTA360/
 
 ## ⏳ Pendientes y riesgos conocidos
 
-- ⏳ **Commitear A4 NHC** (`ingestion.ts`, `config.ts`, `backend/test/nhc.test.ts`, `.env.example`s, `docker-compose.prod.yml`) junto con `deploy.yml`.
+- ⏳ **Peticiones al IDEAM y al SGC** (enviadas el 2026-10-25): acceso a alertas hidrológicas, de deslizamientos y al catálogo sísmico en tiempo real. Plazo legal de respuesta ≈ 2026-11-09.
+- ⏳ **IDEAM:** probar una alerta real con una zona en Colombia (solo se avisa cuando se crea un evento nuevo, es decir, con el siguiente día procesado).
+- ⏳ **`IDEAN.MD`:** el prompt usado con opencode está sin versionar; decidir si moverlo a `docs/` o borrarlo.
 - ⏳ **Meteoalarm en producción:** `METEOALARM_*` tampoco se reenvía en `docker-compose.prod.yml`, así que en prod siempre queda con los valores por defecto (desactivado).
 - ⏳ **Tests inestables con carga:** `alert-engine.int.test.ts` (timeout de 5 s) y los hooks de `routes`/`docs` (10 s). Opciones: subir `testTimeout`/`hookTimeout` en `vitest.config.ts` o limitar los workers.
 - ⏳ **Ruido en logs de tests:** `dispatch.ts:55` (`buildEmail`) lanza `Cannot read properties of undefined (reading 'severity')` cuando el Prisma falso no devuelve el evento. No rompe nada, pero ensucia la salida.
@@ -583,7 +607,7 @@ ALERTA360/
 - ⏳ **Meteoalarm:** el contrato JSON es una suposición; validarlo contra un endpoint real antes de activarlo.
 - ⏳ **Bundle:** `index` (760 kB) supera el umbral de Vite; evaluar dividirlo con `manualChunks` o `import()` dinámico.
 - ⏳ **`vite.config.ts`:** quitar el `watch.ignored` de `alerta360-ui-redesign/` (la carpeta ya no existe).
-- ⏳ **`MEJORAS_DESDE_WORLD_INTEL.md`:** versionarlo o moverlo a `docs/fase4/`.
+- ⏳ **`MEJORAS_DESDE_WORLD_INTEL.md`:** ya está versionado; falta decidir si moverlo a `docs/fase4/`.
 - ⏳ **Externo:** servidor, DNS, certificado TLS y secretos `PROD_HOST` / `PROD_USER` / `PROD_SSH_KEY`.
 - ⏳ **Fase 0:** validar el producto con usuarios reales.
 - ⏳ **Mobile y ML:** pasar de esqueleto a desarrollo.

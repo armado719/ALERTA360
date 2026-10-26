@@ -316,3 +316,15 @@ describe('mapNOAA', () => {
     expect(Number.isNaN(mapped!.occurredAt.getTime())).toBe(false)
   })
 })
+describe('staleAfterMs por fuente (IDEAM)', () => {
+  it('una fuente con staleAfterMs de 3 h no queda degraded a los 31 min', () => {
+    const src = 'ideam-stale-test-2'
+    registerSource(src, { staleAfterMs: 3 * 60 * 60 * 1000 })
+    reportSuccess(src)
+    vi.useFakeTimers()
+    vi.setSystemTime(Date.now() + 31 * 60 * 1000)
+    expect(getSourceStatus(src)).toBe('ok')
+    vi.useRealTimers()
+  })
+})
+

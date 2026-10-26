@@ -59,6 +59,13 @@ const ConfigSchema = z.object({
     .string()
     .default('https://mapservices.weather.noaa.gov/tropical/rest/services/tropical/NHC_tropical_weather_summary/MapServer/7/query'),
   NHC_TIMEOUT: z.coerce.number().default(10000),
+  // --- IDEAM (lluvia diaria, Colombia) — A5
+  IDEAM_ENABLED: z.string().default('false'),
+  IDEAM_RAIN_URL: z
+    .string()
+    .default('https://www.datos.gov.co/resource/s54a-sgyg.json'),
+  IDEAM_RAIN_MIN_MM: z.coerce.number().default(50),
+  IDEAM_TIMEOUT: z.coerce.number().default(30000),
 })
 
 type Config = z.infer<typeof ConfigSchema>

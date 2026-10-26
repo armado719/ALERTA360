@@ -20,6 +20,7 @@ registerSource('nasa_eonet')
 registerSource('gdacs')
 registerSource('meteoalarm')
 registerSource('nhc')
+registerSource('ideam', { staleAfterMs: 3 * 60 * 60 * 1000 })
 
 // ============================================================================
 // USGS Earthquake API
@@ -738,6 +739,186 @@ export async function saveNHCEvent(
 }
 
 // ============================================================================
+// IDEAM — Lluvia diaria (Colombia)
+// ============================================================================
+export interface IDEAMRow {
+  codigoestacion: string
+  codigosensor: string
+  nombreestacion: string
+  municipio: string
+  departamento: string
+  latitud: string
+  longitud: string
+  mm: string
+}
+
+export interface IDEAMStationTotal {
+  codigoestacion: string
+  codigosensor: string
+  nombreestacion: string
+  municipio: string
+  departamento: string
+  latitud: string
+  longitud: string
+  mm: number
+}
+
+const IDEAM_MONTHS_ES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+
+export function ideamCleanStation(name: string): string {
+  let s = String(name ?? '')
+  // quita todo desde el primer '[' hasta el final
+  const idx = s.indexOf('[')
+  if (idx >= 0) s = s.slice(0, idx)
+  s = s.replace(/\s*-\s*AUT\b/gi, '')
+  s = s.trim()
+  // capitaliza por palabras (soporta tildes)
+  s = s
+    .split(/\s+/)
+    .map((w) => (w.length ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w))
+    .join(' ')
+  return s
+}
+
+function ideamLongDate(day: string): string {
+  const [y, m, d] = day.split('-')
+  const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+  return `${Number(d)} de ${months[Number(m) - 1]} de ${y}`
+}
+
+function ideamShortDate(day: string): string {
+  const [, m, d] = day.split('-')
+  return `${Number(d)} ${IDEAM_MONTHS_ES[Number(m) - 1]}`
+}
+
+export function ideamTargetDay(now: Date): string {
+  const colombiaMs = now.getTime() - 5 * 60 * 60 * 1000
+  const col = new Date(colombiaMs)
+  const hour = col.getUTCHours()
+  const base = new Date(Date.UTC(col.getUTCFullYear(), col.getUTCMonth(), col.getUTCDate()))
+  const target = new Date(base)
+  if (hour >= 8) {
+    target.setUTCDate(target.getUTCDate() - 1)
+  } else {
+    target.setUTCDate(target.getUTCDate() - 2)
+  }
+  const y = target.getUTCFullYear()
+  const m = String(target.getUTCMonth() + 1).padStart(2, '0')
+  const d = String(target.getUTCDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+export function pickStationTotals(rows: IDEAMRow[]): IDEAMStationTotal[] {
+  const byStation = new Map<string, IDEAMStationTotal>()
+  for (const r of rows) {
+    const mm = Number(r.mm)
+    if (!Number.isFinite(mm)) continue
+    const candidate: IDEAMStationTotal = {
+      codigoestacion: r.codigoestacion,
+      codigosensor: r.codigosensor,
+      nombreestacion: r.nombreestacion,
+      municipio: r.municipio,
+      departamento: r.departamento,
+      latitud: r.latitud,
+      longitud: r.longitud,
+      mm,
+    }
+    const prev = byStation.get(r.codigoestacion)
+    if (!prev || mm > prev.mm) {
+      byStation.set(r.codigoestacion, candidate)
+    }
+  }
+  return [...byStation.values()]
+}
+
+export function mapIDEAMRain(row: IDEAMStationTotal, day: string, now: Date = new Date()) {
+  const mm = row.mm
+  const minMm = config.IDEAM_RAIN_MIN_MM
+  if (!Number.isFinite(mm)) return null
+  if (mm < minMm) return null
+  if (mm > 500) return null
+
+  const lat = Number(row.latitud)
+  const lon = Number(row.longitud)
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null
+  if (isNullIsland({ latitude: lat, longitude: lon })) return null
+
+  let severity = 'medium'
+  let label = 'Lluvia fuerte'
+  if (mm >= 200) { severity = 'critical'; label = 'Lluvia extrema' }
+  else if (mm >= 100) { severity = 'high'; label = 'Lluvia muy fuerte' }
+
+  const stationClean = ideamCleanStation(row.nombreestacion)
+
+  // ¿el día consultado es "ayer" en Colombia?
+  const nowColombia = new Date(now.getTime() - 5 * 60 * 60 * 1000)
+  const todayCol = new Date(Date.UTC(nowColombia.getUTCFullYear(), nowColombia.getUTCMonth(), nowColombia.getUTCDate()))
+  const yesterdayCol = new Date(todayCol)
+  yesterdayCol.setUTCDate(yesterdayCol.getUTCDate() - 1)
+  const yStr = `${yesterdayCol.getUTCFullYear()}-${String(yesterdayCol.getUTCMonth() + 1).padStart(2, '0')}-${String(yesterdayCol.getUTCDate()).padStart(2, '0')}`
+  const isYesterday = day === yStr
+
+  const mmRounded = Math.round(mm)
+  const mmOne = mm.toFixed(1)
+
+  const titleDate = ideamShortDate(day)
+  const title = isYesterday
+    ? `${label} ayer (${titleDate}): ${mmRounded} mm en ${stationClean}, ${row.municipio} (${row.departamento})`
+    : `${label} el ${titleDate}: ${mmRounded} mm en ${stationClean}, ${row.municipio} (${row.departamento})`
+
+  const description = `Lluvia acumulada el ${ideamLongDate(day)} en la estación ${row.nombreestacion.trim()} del IDEAM: ${mmOne} mm. Dato diario publicado con un día de retraso; no es una alerta temprana.`
+
+  const occurredAt = new Date(`${day}T23:59:00-05:00`)
+
+  return {
+    type: 'rain' as const,
+    source: 'ideam' as const,
+    externalId: `ideam-rain-${row.codigoestacion}-${day}`,
+    latitude: lat,
+    longitude: lon,
+    magnitude: Number(mmOne),
+    intensity: null,
+    title,
+    description,
+    severity,
+    occurredAt,
+    rawData: {
+      estacion: row.nombreestacion,
+      codigoestacion: row.codigoestacion,
+      codigosensor: row.codigosensor,
+      mm,
+      dia: day,
+      municipio: row.municipio,
+      departamento: row.departamento,
+      fuente: 'IDEAM (datos.gov.co)',
+    } as any,
+  }
+}
+
+export async function fetchIDEAMRain(day: string): Promise<IDEAMRow[]> {
+  const url = config.IDEAM_RAIN_URL
+  const minMm = config.IDEAM_RAIN_MIN_MM
+  const params = new URLSearchParams()
+  params.set('$select', 'codigoestacion,codigosensor,nombreestacion,municipio,departamento,latitud,longitud,sum(valorobservado) as mm')
+  params.set('$where', `fechaobservacion between '${day}T00:00:00' and '${day}T23:59:59'`)
+  params.set('$group', 'codigoestacion,codigosensor,nombreestacion,municipio,departamento,latitud,longitud')
+  params.set('$having', `sum(valorobservado) >= ${minMm}`)
+  params.set('$limit', '5000')
+  const res = await axios.get<IDEAMRow[]>(`${url}?${params.toString()}`, {
+    timeout: config.IDEAM_TIMEOUT,
+    headers: { 'User-Agent': 'ALERTA360 (arc.fullstack30@gmail.com)' },
+  })
+  return res.data ?? []
+}
+
+// Throttle: consultar como máximo una vez por hora.
+let lastIDEAMSuccessAt: number | null = null
+export function _resetIDEAMThrottle() { lastIDEAMSuccessAt = null }
+export function _getLastIDEAMSuccessAt() { return lastIDEAMSuccessAt }
+export function _setLastIDEAMSuccessAt(v: number | null) { lastIDEAMSuccessAt = v }
+
+// ============================================================================
 // Ingestion cycle
 // ============================================================================
 let ingestCounter = 0
@@ -800,7 +981,7 @@ export async function runFreshnessSweep(
 export async function runIngestion(
   prisma: PrismaClient,
   hooks?: IngestionHooks
-): Promise<{ usgs: number; noaa: number; eonet: number; gdacs: number; meteoalarm: number; nhc: number }> {
+): Promise<{ usgs: number; noaa: number; eonet: number; gdacs: number; meteoalarm: number; nhc: number; ideam: number }> {
   const cycle = ++ingestCounter
   const startedAt = Date.now()
   logger.info(`[INGESTION] Starting cycle #${cycle}`)
@@ -979,7 +1160,48 @@ export async function runIngestion(
     logger.warn('ⓘ [INGESTION] NHC skipped — circuit breaker abierto')
   }
 
-  const total = usgsInserted + noaaInserted + eonetInserted + gdacsInserted + meteoalarmInserted + nhcInserted
+  // ---- IDEAM: lluvia diaria (Colombia) ----
+  let ideamInserted = 0
+  if (config.IDEAM_ENABLED === 'true' && canFetch('ideam')) {
+    // Throttle: como máximo una consulta por hora.
+    const nowMs = Date.now()
+    if (lastIDEAMSuccessAt !== null && nowMs - lastIDEAMSuccessAt < 60 * 60 * 1000) {
+      logger.debug('[INGESTION] IDEAM omitido — aún no pasó 1 h desde la última consulta exitosa')
+    } else {
+      let ideamRows: IDEAMRow[] = []
+      try {
+        const day = ideamTargetDay(new Date())
+        ideamRows = await fetchIDEAMRain(day)
+        const totals = pickStationTotals(ideamRows)
+        // map con el día
+        const mappedList = totals
+          .map((t) => mapIDEAMRain(t, day))
+          .filter((m): m is NonNullable<typeof m> => m !== null)
+        reportSuccess('ideam')
+        lastIDEAMSuccessAt = Date.now()
+        for (const mapped of mappedList) {
+          try {
+            const existing = await prisma.disasterEvent.findFirst({
+              where: { externalId: mapped.externalId, source: 'ideam' },
+            })
+            if (existing) continue
+            const created = await prisma.disasterEvent.create({ data: { ...mapped, isActive: true } })
+            ideamInserted++
+            await notifyHooks(hooks, created)
+          } catch (err) {
+            ingestionErrorsTotal.inc({ source: 'ideam' })
+            logger.error({ err, eventId: mapped.externalId }, 'Error inserting IDEAM event')
+          }
+        }
+      } catch (err) {
+        reportFailure('ideam', err)
+      }
+    }
+  } else if (config.IDEAM_ENABLED === 'true') {
+    logger.warn('ⓘ [INGESTION] IDEAM skipped — circuit breaker abierto')
+  }
+
+  const total = usgsInserted + noaaInserted + eonetInserted + gdacsInserted + meteoalarmInserted + nhcInserted + ideamInserted
 
   // ---- métricas ----
   if (usgsInserted > 0) ingestionEventsTotal.inc({ source: 'usgs' }, usgsInserted)
@@ -988,6 +1210,7 @@ export async function runIngestion(
   if (gdacsInserted > 0) ingestionEventsTotal.inc({ source: 'gdacs' }, gdacsInserted)
   if (meteoalarmInserted > 0) ingestionEventsTotal.inc({ source: 'meteoalarm' }, meteoalarmInserted)
   if (nhcInserted > 0) ingestionEventsTotal.inc({ source: 'nhc' }, nhcInserted)
+  if (ideamInserted > 0) ingestionEventsTotal.inc({ source: 'ideam' }, ideamInserted)
   ingestionCycleDuration.set((Date.now() - startedAt) / 1000)
   markIngestionSuccess()
 
@@ -1000,9 +1223,9 @@ export async function runIngestion(
   logger.info(
     `[INGESTION] Cycle #${cycle} complete — USGS: ${usgsInserted} new, ` +
       `NOAA: ${noaaInserted} new, EONET: ${eonetInserted} new, GDACS: ${gdacsInserted} new, ` +
-      `METEOALARM: ${meteoalarmInserted} new, NHC: ${nhcInserted} new (${total} total)`
+      `METEOALARM: ${meteoalarmInserted} new, NHC: ${nhcInserted} new, IDEAM: ${ideamInserted} new (${total} total)`
   )
-  return { usgs: usgsInserted, noaa: noaaInserted, eonet: eonetInserted, gdacs: gdacsInserted, meteoalarm: meteoalarmInserted, nhc: nhcInserted }
+  return { usgs: usgsInserted, noaa: noaaInserted, eonet: eonetInserted, gdacs: gdacsInserted, meteoalarm: meteoalarmInserted, nhc: nhcInserted, ideam: ideamInserted }
 }
 
 // Schedule: every INGEST_INTERVAL ms
@@ -1014,6 +1237,7 @@ export function startIngestScheduler(prisma: PrismaClient, hooks?: IngestionHook
     gdacs: config.GDACS_ENABLED === 'true',
     meteoalarm: config.METEOALARM_ENABLED === 'true',
     nhc: config.NHC_ENABLED === 'true',
+    ideam: config.IDEAM_ENABLED === 'true',
   }
   const anyEnabled = Object.values(enabledFlags).some(Boolean)
 

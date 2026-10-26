@@ -23,6 +23,8 @@ interface SourceState {
   lastAttempt: number | null
   /** Fallos consecutivos desde el último éxito. */
   consecutiveFailures: number
+  /** Umbral de frescura propio de la fuente (ms). Si no se define, se usa STALE_AFTER_MS. */
+  staleAfterMs?: number
 }
 
 const STALE_AFTER_MS = 30 * 60 * 1000 // 30 min
@@ -112,7 +114,8 @@ export function updateFreshness(source: string): void {
   if (state.status === 'down' || state.status === 'unknown') return
 
   const age = state.lastSuccess ? Date.now() - state.lastSuccess : Infinity
-  if (age > STALE_AFTER_MS) {
+  const staleAfter = state.staleAfterMs ?? STALE_AFTER_MS
+  if (age > staleAfter) {
     state.status = 'degraded'
   }
 }
@@ -161,6 +164,7 @@ export function getAllSourceHealth(): {
 }
 
 /** Registra una fuente para que aparezca en /api/sources/health aunque no haya sido fetchada todavía. */
-export function registerSource(source: string): void {
-  getState(source) // inicializa el estado si no existe
+export function registerSource(source: string, options?: { staleAfterMs?: number }): void {
+  const state = getState(source)
+  if (options?.staleAfterMs) state.staleAfterMs = options.staleAfterMs
 }
