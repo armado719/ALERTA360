@@ -3,11 +3,15 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+// Igual que el paquete real (CommonJS): solo export por defecto. Un mock con
+// exports con nombre ocultó que `import * as` dejaba VAPID sin configurar.
 vi.mock('web-push', () => ({
-  setVapidDetails: vi.fn(),
-  sendNotification: vi.fn().mockResolvedValue(undefined),
+  default: {
+    setVapidDetails: vi.fn(),
+    sendNotification: vi.fn().mockResolvedValue(undefined),
+  },
 }))
-import * as webpush from 'web-push'
+import webpush from 'web-push'
 import { sendPush } from '../src/services/push'
 
 const SUB = { endpoint: 'https://fcm/send/abc', keys: { p256dh: 'a', auth: 'b' } }

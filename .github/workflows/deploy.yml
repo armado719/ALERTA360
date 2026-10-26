@@ -23,7 +23,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  NODE_VERSION: '20'
+  NODE_VERSION: '22'
 
 jobs:
   build-and-push:
@@ -117,6 +117,22 @@ jobs:
           test -f dist/status.html
           du -sh dist
 
+      - name: Validar secretos de despliegue
+        run: |
+          if [ -z "${{ secrets.PROD_HOST }}" ]; then
+            echo "❌ Falta el secreto PROD_HOST (Settings → Secrets → Actions)"
+            exit 1
+          fi
+          if [ -z "${{ secrets.PROD_USER }}" ]; then
+            echo "❌ Falta el secreto PROD_USER (Settings → Secrets → Actions)"
+            exit 1
+          fi
+          if [ -z "${{ secrets.PROD_SSH_KEY }}" ]; then
+            echo "❌ Falta el secreto PROD_SSH_KEY (Settings → Secrets → Actions)"
+            exit 1
+          fi
+          echo "✅ Secretos de despliegue presentes"
+
       - name: Preparar clave SSH
         run: |
           install -d -m 700 ~/.ssh
@@ -124,7 +140,7 @@ jobs:
           chmod 600 ~/.ssh/id_deploy
 
       # rsync del build y de la configuración de infraestructura (no toca
-      # `.env.produccion`, `ssl/` ni los volúmenes).
+      # `.env.production`, `ssl/` ni los volúmenes).
       - name: Subir frontend y configuración
         run: |
           SSH="ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20"
@@ -155,9 +171,9 @@ jobs:
             if [ -d dist ]; then mv dist dist.old; fi
             mv dist.new dist
 
-            # 2. Variables de producción (compose no lee .env.produccion solo)
+            # 2. Variables de producción (compose no lee .env.production solo)
             set -a
-            . ./.env.produccion
+            . ./.env.production
             set +a
             export IMAGE_TAG="${{ needs.build-and-push.outputs.image_tag }}"
 
@@ -253,10 +269,11 @@ jobs:
             PREV="$(cat .current_tag 2> /dev/null || true)"
             if [ -n "$PREV" ]; then
               set -a
-              . ./.env.produccion
+              . ./.env.production
               set +a
               IMAGE_TAG="$PREV" docker compose -f docker-compose.prod.yml up -d backend
               echo "Rollback del backend a $PREV"
             else
               echo "Sin tag anterior registrado: primer despliegue, no hay rollback"
             fi
+

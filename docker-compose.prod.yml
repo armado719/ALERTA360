@@ -50,6 +50,14 @@ services:
       EONET_DAYS: ${EONET_DAYS:-30}
       GDACS_ENABLED: ${GDACS_ENABLED:-true}
       GDACS_DAYS: ${GDACS_DAYS:-30}
+      NHC_ENABLED: ${NHC_ENABLED:-true}
+      NHC_URL: ${NHC_URL:-https://mapservices.weather.noaa.gov/tropical/rest/services/tropical/NHC_tropical_weather_summary/MapServer/7/query}
+      NHC_TIMEOUT: ${NHC_TIMEOUT:-10000}
+      # IDEAM (lluvia diaria, Colombia)
+      IDEAM_ENABLED: ${IDEAM_ENABLED:-false}
+      IDEAM_RAIN_URL: ${IDEAM_RAIN_URL:-https://www.datos.gov.co/resource/s54a-sgyg.json}
+      IDEAM_RAIN_MIN_MM: ${IDEAM_RAIN_MIN_MM:-50}
+      IDEAM_TIMEOUT: ${IDEAM_TIMEOUT:-30000}
       GEOCODE_ENABLED: ${GEOCODE_ENABLED:-true}
       NOMINATIM_URL: ${NOMINATIM_URL:-https://nominatim.openstreetmap.org}
       # Entrega de alertas (vacío = el canal queda en `skipped`)

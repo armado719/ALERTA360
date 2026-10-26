@@ -36,6 +36,10 @@ const ConfigSchema = z.object({
   EONET_DAYS: z.coerce.number().default(30),
   GDACS_ENABLED: z.string().default('true'),
   GDACS_DAYS: z.coerce.number().default(30),
+  // La API vieja (`gdacsapi.php`) dejó de responder; esta es la actual.
+  GDACS_URL: z
+    .string()
+    .default('https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH'),
   GEOCODE_ENABLED: z.string().default('true'),
   NOMINATIM_URL: z.string().default('https://nominatim.openstreetmap.org'),
   INGEST_INTERVAL: z.coerce.number().default(300000),
@@ -49,6 +53,19 @@ const ConfigSchema = z.object({
     .default('https://meteoalarm.cc-d.eu/api/1.0/warnings'),
   METEOALARM_COUNTRIES: z.string().default('ALL'),
   METEOALARM_TIMEOUT: z.coerce.number().default(10000),
+  // --- NHC Forecast Cone / ciclones tropicales (A4) ---
+  NHC_ENABLED: z.string().default('true'),
+  NHC_URL: z
+    .string()
+    .default('https://mapservices.weather.noaa.gov/tropical/rest/services/tropical/NHC_tropical_weather_summary/MapServer/7/query'),
+  NHC_TIMEOUT: z.coerce.number().default(10000),
+  // --- IDEAM (lluvia diaria, Colombia) — A5
+  IDEAM_ENABLED: z.string().default('false'),
+  IDEAM_RAIN_URL: z
+    .string()
+    .default('https://www.datos.gov.co/resource/s54a-sgyg.json'),
+  IDEAM_RAIN_MIN_MM: z.coerce.number().default(50),
+  IDEAM_TIMEOUT: z.coerce.number().default(30000),
 })
 
 type Config = z.infer<typeof ConfigSchema>

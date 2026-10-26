@@ -122,16 +122,16 @@ export default function NotificationsPanel({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -10, scale: 0.98 }}
             transition={{ duration: 0.18 }}
-            className="absolute right-3 sm:right-5 top-[62px] z-50 w-[min(92vw,360px)]
-                       max-h-[min(72vh,540px)] flex flex-col overflow-hidden rounded-2xl
+            className="absolute right-3 sm:right-5 top-[62px] z-50 w-[min(94vw,460px)]
+                       max-h-[min(82vh,720px)] flex flex-col overflow-hidden rounded-2xl
                        bg-[#0f1a26]/95 border border-white/10 backdrop-blur-xl
                        shadow-[0_24px_60px_-20px_rgba(0,0,0,.95)]"
           >
             {/* ---------- Cabecera ---------- */}
-            <header className="flex items-center justify-between gap-2 px-3.5 py-2.5 border-b border-white/[0.07]">
+            <header className="flex items-center justify-between gap-2 px-4 py-3 border-b border-white/[0.07]">
               <div className="flex items-center gap-2 min-w-0">
                 <Bell className="w-4 h-4 text-amber-300 shrink-0" />
-                <h2 className="text-[13px] font-semibold text-slate-100">Alertas</h2>
+                <h2 className="text-[14px] font-semibold text-slate-100">Alertas</h2>
                 {unread > 0 && (
                   <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-500/90 text-white">
                     {unread}
@@ -157,12 +157,12 @@ export default function NotificationsPanel({
             {/* ---------- Lista ---------- */}
             <div className="flex-1 overflow-y-auto a360-scroll">
               {loading && notifications.length === 0 ? (
-                <p className="px-4 py-8 text-center text-[12px] text-slate-500">Cargando alertas…</p>
+                <p className="px-4 py-10 text-center text-[13px] text-slate-500">Cargando alertas…</p>
               ) : notifications.length === 0 ? (
-                <div className="px-5 py-10 text-center">
-                  <BellOff className="w-6 h-6 mx-auto text-slate-600 mb-2" />
-                  <p className="text-[12.5px] text-slate-400">Sin alertas por ahora</p>
-                  <p className="text-[11px] text-slate-500 mt-1 leading-snug">
+                <div className="px-6 py-14 text-center">
+                  <BellOff className="w-7 h-7 mx-auto text-slate-600 mb-2.5" />
+                  <p className="text-[13.5px] text-slate-400">Sin alertas por ahora</p>
+                  <p className="text-[12px] text-slate-500 mt-1.5 leading-snug">
                     Recibirás un aviso cuando un evento entre en el radio de tus ubicaciones.
                   </p>
                 </div>
@@ -179,11 +179,11 @@ export default function NotificationsPanel({
                             for (const id of group.ids) onMarkRead(id)
                             onOpenEvent(notification)
                           }}
-                          className={`w-full text-left px-3.5 py-2.5 transition flex gap-2.5
+                          className={`w-full text-left px-4 py-3 transition flex gap-3
                                       hover:bg-white/[0.04] ${group.unread ? 'bg-cyan-400/[0.045]' : ''}`}
                         >
                           <span
-                            className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${
+                            className={`mt-[7px] w-2 h-2 rounded-full shrink-0 ${
                               SEVERITY_COLOR[event.severity] ?? 'bg-slate-400'
                             }`}
                           />
@@ -191,28 +191,28 @@ export default function NotificationsPanel({
                           <span className="min-w-0 flex-1">
                             <span className="flex items-start justify-between gap-2">
                               <span
-                                className={`text-[12.5px] leading-snug truncate ${
+                                className={`text-[13.5px] leading-snug line-clamp-2 ${
                                   group.unread ? 'text-slate-100 font-medium' : 'text-slate-300'
                                 }`}
                               >
                                 {event.title}
                               </span>
-                              <span className="text-[10px] text-slate-500 shrink-0 mt-0.5">
+                              <span className="text-[11px] text-slate-500 shrink-0 mt-0.5">
                                 {relativeTime(group.sentAt)}
                               </span>
                             </span>
 
-                            <span className="mt-0.5 flex items-center gap-1.5 text-[10.5px] text-slate-500">
+                            <span className="mt-1 flex items-center gap-1.5 text-[11.5px] text-slate-500">
                               <span>{TYPE_LABEL[event.type] ?? event.type}</span>
                               <span aria-hidden>·</span>
                               <span className="tabular-nums">{notification.distanceKm} km</span>
                               <span aria-hidden>·</span>
                               {group.channels.map(channel => {
                                 const Icon = CHANNEL_ICON[channel as keyof typeof CHANNEL_ICON] ?? Zap
-                                return <Icon key={channel} className="w-3 h-3" />
+                                return <Icon key={channel} className="w-3.5 h-3.5" />
                               })}
                               {group.unread && (
-                                <span className="ml-auto text-[9.5px] font-bold text-cyan-300 uppercase tracking-wide">
+                                <span className="ml-auto text-[10.5px] font-bold text-cyan-300 uppercase tracking-wide">
                                   nueva
                                 </span>
                               )}
@@ -228,15 +228,15 @@ export default function NotificationsPanel({
 
             {/* ---------- Pie ---------- */}
             {notifications.length > 0 && (
-              <footer className="flex items-center justify-between gap-2 px-3.5 py-2 border-t border-white/[0.07]">
-                <span className="text-[10.5px] text-slate-500">
+              <footer className="flex items-center justify-between gap-2 px-4 py-2.5 border-t border-white/[0.07]">
+                <span className="text-[11.5px] text-slate-500">
                   {groups.length} evento{groups.length === 1 ? '' : 's'}
                   {unread > 0 ? ` · ${unread} sin leer` : ' · todo leído'}
                 </span>
                 <button
                   onClick={onMarkAll}
                   disabled={unread === 0}
-                  className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg
+                  className="inline-flex items-center gap-1 text-[12px] px-2.5 py-1 rounded-lg
                              text-cyan-300 hover:bg-cyan-400/10 disabled:text-slate-600
                              disabled:hover:bg-transparent transition"
                 >

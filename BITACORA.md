@@ -1,733 +1,675 @@
 # 📋 BITÁCORA DE CAMBIOS — ALERTA360
 
 **Proyecto:** ALERTA360 — Plataforma Global de Alertas Tempranas para Desastres Naturales  
-**Última actualización:** 2026-10-19  
-**Versión actual:** 0.5.0 (MVP Fases 1-3 + producción + motor de alertas Fase 4 + geolocalización/zonas + notificaciones push offline vía Service Worker + Web Push VAPID) — Motor de alertas validado con test de integración e2e ✓
+**Última actualización:** 2026-10-25  
+**Versión actual:** 0.5.0 — MVP Fases 1-3 + infraestructura de producción + motor de alertas (WebSocket, push offline, email, SMS) + zonas círculo/polígono + catálogo de mejoras Fase 4 (#1–#7) + fuentes NHC (A4) y lluvia del IDEAM (A5, primera fuente colombiana)  
+**Versión de la bitácora:** 1.4
 
 ---
 
-## 📌 Propósito
+## 📌 Propósito y convenciones
 
-Este documento registra **todos los cambios, modificaciones y actualizaciones** realizados en el proyecto ALERTA360. Se actualiza automáticamente con cada cambio significativo.
+Este documento registra **todos los cambios significativos** del proyecto ALERTA360.
+
+- Las entradas van en **orden cronológico inverso** (la más reciente primero), ordenadas por la fecha del commit.
+- Cada entrada indica: fecha, commit(s), archivos afectados y estado.
+- **Tests** = número de casos `it(...)` definidos en `backend/test/` al cerrar ese commit (recontados desde git el 2026-10-25).
+- Una entrada sin commit se marca **⚠️ sin commitear**.
+
+---
+
+## 🩺 Estado actual (medido 2026-10-26)
+
+| Verificación | Resultado |
+|---|---|
+| `tsc --noEmit` backend | ✅ 0 errores |
+| `tsc --noEmit` frontend | ✅ 0 errores |
+| Build frontend (`vite build`) | ✅ 2.465 módulos · `index` 760 kB (247 kB gzip) + `Map3D` 812 kB (221 kB gzip) · aviso de tamaño de chunk |
+| Tests backend | ✅ 175/175 en 18 archivos con la suite completa (`vitest run`). Con la máquina muy cargada llegaron a fallar por timeout `alert-engine.int` y los hooks de `routes`/`docs`; no se repitió en las últimas ejecuciones |
+| Cambios sin commitear | Ninguno. Fuera del repo a propósito: `.claude/` (configuración local) e `IDEAN.MD` (prompt usado con opencode) |
 
 ---
 
 ## 🗓️ Historial de Cambios
+### **2026-10-26 — Diálogos propios en lugar de "localhost dice…" + búsqueda de lugares reparada**
 
-### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #5 B3 escalada por exposición)**
+#### Diagnóstico:
+- 🐞 Al guardar una zona, `LocationPanel` usaba `prompt('Nombre de la zona:')`: el cuadro gris nativo "localhost dice…", fuera del estilo de la app.
+- 🐞 Al iniciar sesión, `usePushSubscription` pedía el permiso de notificaciones sin contexto ni clic del usuario (los navegadores silencian o bloquean a los sitios que lo hacen).
+- 🐞 **La búsqueda de lugares nunca respondía** desde `52a589c` (2026-10-19): el preHandler `requireGeocodeEnabled` era síncrono y no llamaba a `done()`, así que con la geocodificación activa Fastify esperaba para siempre. Afectaba la búsqueda de zonas y "Usar mi ubicación actual". El test solo cubría el caso desactivado (503). Nominatim respondía bien (1,5 s).
+
 #### Cambios Realizados:
-- ✅ **`backend/src/services/analysis/exposure.ts`** — `computeEscalationLevel(population, severity, radiusKm?): EscalationLevel` (0-4). Score = millones expuestos + peso severidad + ajuste radio.
-- ✅ **`backend/src/routes/events.ts`** — `GET /api/events` + `/:id` exponen `escalationLevel` (adiyacente a `exposedPopulation`).
-- ✅ **`backend/test/exposure.test.ts`** (+4 tests) — nivel 0/4, escalada por severidad, cap 4.
-- Niveles: 0 = sin exposición · 1 = bajo (<1 M) · 2 = medio · 3 = alto · 4 = crítico (>5 M o severity crítica). Reutilizable en el motor de alertas / WS payload.
+- ✅ **`src/components/LocationPanel.tsx`** — sin `prompt()`: campo "Nombre de la zona" dentro del panel, precargado con el lugar elegido, `maxLength` 60, Guardar deshabilitado y ayuda si está vacío, Enter guarda.
+- ✅ **`src/hooks/usePushSubscription.ts`** — ya no pide el permiso solo: si está `granted` se suscribe en silencio; expone `enable()` para pedirlo desde un clic.
+- ✅ **`src/components/PushPrompt.tsx`** (nuevo) — tarjeta "Recibe alertas aunque cierres la app" con el estilo de `EventDetailCard`, a los 3 s del login, abajo a la izquierda en escritorio (no tapa "Ver todos") y a lo ancho en celular. "Ahora no" se recuerda 7 días (`localStorage` con try/catch). Si tras "Activar" el permiso queda bloqueado, muestra el aviso del candado; si ya estaba bloqueado de antes, no insiste. No aparece en modo demo.
+- ✅ **`src/App.tsx`** — monta `PushPrompt` con usuario, soporte de push y fuera del modo demo.
+- ✅ **`backend/src/routes/geocode.ts`** — `requireGeocodeEnabled` es `async` (comentario con el porqué).
+- ✅ **`backend/test/geocode.test.ts`** — test de regresión: con la geocodificación activa, `?q=B` responde 400 sin colgarse. Falla sin el arreglo (timeout de 3 s) y pasa con él (88 ms).
+- Implementado por Cline (prompt en esta conversación) y revisado en el navegador; los dos bugs de la tarjeta encontrados en la revisión (desaparecía al bloquear y luego avisaba "bloqueadas" en cada login) y el de la búsqueda se corrigieron aquí.
+
+#### Estado:
+- ✅ TSC frontend y backend 0 · suite backend 175/175 (18 archivos) · 0 `alert(`/`confirm(`/`prompt(` en `src/`
+- ✅ Navegador (login real, permiso simulado): sin permiso automático al entrar; tarjeta a los ~3 s; "Ahora no" la oculta y guarda la fecha; permiso ya bloqueado → sin tarjeta
+- ✅ Zonas: buscar "Santa Marta" → nombre precargado; vacío → Guardar deshabilitado + ayuda; "Santa Marta (QA)" + Enter → guardada y en la lista; 0 diálogos nativos. `/api/geocode/search?q=Santa Marta` → 200 en 3,2 s (antes no respondía)
+- ℹ️ Datos de prueba en la BD local: usuario `qa_tester2` con la zona "Santa Marta (QA)" (50 km)
+
+### **2026-10-26 — Centro de eventos: filtros y listado completo en una ventana grande**
+
+#### Diagnóstico:
+- La sección plegable "FILTRAR POR TIPO" del panel lateral empujaba la lista de eventos y la dejaba casi sin espacio; con cientos de eventos el listado era difícil de recorrer.
+- El filtro por defecto ocultaba huracanes, incendios, sequías, olas de calor y nieve: los ciclones del NHC y los incendios de GDACS no se veían en el mapa.
+- La dona solo tenía 6 colores para 12 tipos.
+
+#### Cambios Realizados:
+- ✅ **`src/data/eventTypes.ts`** (nuevo) — los 12 tipos con color fijo, etiquetas de fuentes, severidades y helpers compartidos.
+- ✅ **`src/App.tsx`** — filtros ampliados (`types`, `timeRange`, `severities`, `sources`), por defecto todo visible. Siempre se piden los 12 tipos al backend y tipo, severidad y fuente se filtran en el frontend, así los conteos existen aunque un filtro esté desmarcado. Una fuente que no esté en la lista conocida pasa siempre (hay eventos viejos con `source='nasa'`).
+- ✅ **`src/components/Dashboard.tsx`** — sin la sección plegable; los 8 eventos más graves/recientes, botón "Ver todos (N) →" y botón de filtros con badge; dona y leyenda con color por tipo.
+- ✅ **`src/components/EventsExplorer.tsx`** (nuevo) — "Centro de eventos": filtros con conteos sobre TODOS los eventos (tipo con Todos/Ninguno, severidad, fuente, período), búsqueda, orden (más graves/recientes/antiguos), 50 filas + "Cargar más", clic → vuela al evento; Escape y clic en el fondo cierran. En celular: pantalla completa y filtros plegados (máx. 60 % del alto).
+- ✅ **`src/data/demoEvents.ts`** — fuentes con códigos reales (`usgs`, `noaa`, `nasa_eonet`, `gdacs`, `nhc`, `ideam`).
+- Implementado por opencode y Cline con el prompt de esta conversación; revisado en el navegador en tres rondas.
+
+#### Bugs encontrados en las revisiones (todos corregidos):
+- Las opciones de filtro se calculaban sobre los eventos ya filtrados: al desmarcar IDEAM desaparecía de la lista.
+- Con la convención "`sources: []` = todas", desmarcar IDEAM dejaba visible **solo** IDEAM (306 → 20).
+- En celular los filtros ocupaban 701 px y a la lista le quedaban 24 px.
+- Al pasar a la lista explícita de fuentes, el **demo público mostraba 0 eventos** (los datos demo usaban `'USGS'`, `'SGC'`, `'CENAPRED'`…).
+- Severidades en inglés ("CRITICAL") y períodos como "1h/24h/7d".
+
+#### Estado:
+- ✅ TSC frontend 0
+- ✅ Navegador: "Ver todos (307)"; desmarcar IDEAM 307 → 287 → 307 con las demás fuentes marcadas; celular 375 px con la lista visible (588 px) y sin scroll horizontal; Escape cierra; severidades en español
+- ✅ Demo (`build:demo` + `vite preview`): "Ver todos (178)", sin tarjeta de notificaciones
+
+### **2026-10-25 — IDEAM lluvia diaria (A5): primera fuente colombiana**
+
+#### Diagnóstico (con datos reales del 24-oct):
+- Ninguna entidad colombiana publica alertas en tiempo real con API pública (SGC: FDSN con *Access Denied*; IDEAM: alertas solo en PDF/visor FEWS; UNGRD: solo histórico). La única viable es la precipitación del IDEAM en datos.gov.co (`s54a-sgyg`), publicada **una vez al día** con los datos del día anterior → información de contexto, no alerta temprana.
+- Lecturas cada 10 min (144/día). Hay **dos sensores** que miden la misma lluvia: `0240` (488 estaciones) y `0257` GPRS (20 estaciones). Sumarlos duplicaba la lluvia (Armenia: 44,3 mm salía 88,5 mm). Regla: sumar por (estación, sensor) y tomar el **mayor**.
+- Umbrales aprobados: 50–99 mm `medium` "Lluvia fuerte" · 100–199 mm `high` "Lluvia muy fuerte" · ≥200 mm `critical` "Lluvia extrema" · >500 mm descartado. Alerta a los usuarios ("ayer" solo si el día es realmente ayer). Apagada por defecto (`IDEAM_ENABLED=false`).
+- Implementado por opencode con el prompt `IDEAN.MD`; revisado aquí en dos rondas (bugs de tildes "EdéN", nombres truncados "[2502", test de "ayer" dependiente del reloj y bitácora mal ubicada, todos corregidos).
+
+#### Cambios Realizados:
+- ✅ **config.ts** — variables `IDEAM_ENABLED`, `IDEAM_RAIN_URL`, `IDEAM_RAIN_MIN_MM`, `IDEAM_TIMEOUT`.
+- ✅ **health.ts** — `registerSource` acepta `{ staleAfterMs }`; `updateFreshness` usa umbral por fuente (3 h IDEAM), retrocompatible.
+- ✅ **ingestion.ts** — `IDEAMRow`, `IDEAMStationTotal`, `ideamTargetDay`, `pickStationTotals`, `mapIDEAMRain`, `fetchIDEAMRain`, `ideamCleanStation`; throttle `lastIDEAMSuccessAt` (1 h); bloque IDEAM en `runIngestion` con circuit breaker, dedup por `externalId`, notificaciones; log de throttle a `debug`.
+- ✅ **Tests** — `test/ideam.test.ts` (16 tests) + caso `staleAfterMs` en `test/sources.test.ts`.
+- ✅ **Env/infra** — `.env.example`, `.env.production.example`, `docker-compose.prod.yml`.
+
+#### Estado:
+- ✅ TSC backend 0 · suite completa 174/174 (18 archivos)
+- ✅ API en vivo (día 2026-10-24): 20 filas → 20 estaciones → 20 eventos, 20 `externalId` distintos, 0 títulos con mayúscula tras tilde; Armenia (0026125061) no aparece inflada
+- ✅ Ciclo real en el backend local (`IDEAM_ENABLED=true` solo en `backend/.env`): primera consulta → IDEAM `ok` y **20 eventos** (p. ej. "Lluvia extrema ayer (24 oct): 289 mm en Rio Iro, Rio Iró (Santa Rita) (Choco)", "Lluvia muy fuerte ayer (24 oct): 122 mm en Minca, Santa Marta (Magdalena)"); tras reiniciar el backend y volver a consultar los mismos datos → siguen **20**, sin duplicados
+- ℹ️ 0 alertas enviadas: ningún usuario tiene zonas cerca de esas estaciones. Las alertas solo salen al crearse un evento nuevo.
+
+
+### **2026-10-25 — Ingesta: NHC duplicado, fechas de NOAA y GDACS 404** · `cd18630`
+#### Diagnóstico (con respuestas reales de cada fuente):
+- 🐞 **NHC duplicaba los ciclones cada 5 min** (bug de A4): `mapNHC` leía campos inventados (`STORMID`, `STORMNAME`, `WIND_MAX_KTS`) que la capa real no tiene (`idp_source`, `stormname`, `stormtype`, `basin`; **sin viento**). Sin identificador, el `externalId` caía en la hora actual → un evento nuevo por ciclo (22 duplicados en la BD local), título genérico y severidad siempre `low`.
+- 🐞 **NOAA no guardaba ninguna alerta**: `occurredAt = new Date(props.starts)`, pero el NWS no publica `starts` (0 de 368 alertas reales); trae `onset`/`effective`/`sent`. Toda alerta fallaba con `Invalid Date`.
+- 🐞 **GDACS 404**: `gdacsapi.php` dejó de existir. La API actual (`/gdacsapi/api/events/geteventlist/SEARCH`) cambió los campos (`fromdate`, `severitydata`, `iscurrent` como texto, nivel `Red` sí se usa), pagina de a 100 y responde 400 al pedir una página después de la última.
+- ⚠️ Los tests de NHC, NOAA y GDACS usaban datos con campos inventados y por eso pasaban.
+
+#### Cambios Realizados:
+- ✅ **`mapNHC`** — un evento por tormenta (`nhc-<stormId>` desde `idp_source`); sin id estable se descarta; severidad por `stormtype` (TD/STD/PTC low · TS/STS medium · HU high · MH critical); título en español ("Tormenta tropical Vance"). **`saveNHCEvent`** (nuevo): la primera vez crea y alerta; los avisos siguientes actualizan posición, cono, severidad y `fetchedAt` del mismo evento, sin volver a alertar.
+- ✅ **`mapNOAA`** — `occurredAt` = primera fecha válida entre `onset`, `effective` y `sent`; `NOAAAlertProperties` sin `starts`.
+- ✅ **GDACS** — `config.GDACS_URL` (API actual); `fetchGDACS` con `fromDate`/`toDate`, sin EQ, hasta 3 páginas, dedup por tipo+id, timeout 45 s, y el 400 de fin de páginas no se registra como fallo. `mapGDACS` lee `fromdate` (UTC), `severitydata`, descarta `iscurrent: "false"`; `externalId = gdacs-<tipo>-<eventid>`; `Red → critical`.
+- ✅ **`sources/health.ts`** — `summarizeError()`: el log de fallos de fuentes muestra mensaje, código, estado HTTP y URL en lugar del AxiosError completo (~50 líneas por fallo).
+- ✅ **Tests reescritos con datos reales**: `nhc.test.ts` (7, incluye `saveNHCEvent`), `sources.test.ts` (GDACS 9 con el tifón IN-FA-26; NOAA +2 de fechas).
+- ✅ **BD local** — borrados los 22 ciclones duplicados (`externalId LIKE 'nhc--%'`, 0 notificaciones asociadas); quedan Vance (`nhc-EP222026`) y Olana (`nhc-CP032026`).
+
+#### Estado:
+- ✅ TSC backend 0 · tests 157/157 (17 archivos)
+- ✅ Mappers contra respuestas reales: NHC 2 → 2 (ids estables); NOAA 371 → 20 con geometría, 0 fechas inválidas
+- ✅ ~90 min de ciclos reales: NOAA inserta 1–2 alertas por ciclo; NHC sin duplicados; GDACS insertó 54 y 81 eventos
+- ⚠️ GDACS es inestable (a veces >45 s o 400 en la página 1); el circuit breaker lo aísla. Hubo cortes de DNS (`ENOTFOUND`) hacia NOAA y NASA desde la red local, ajenos al código.
+
+### **2026-10-25 — Inicio de sesión, panel de Configuración y panel de alertas más grande** · `cd18630`
+#### Diagnóstico del inicio de sesión:
+- 🐞 **BD local desactualizada:** faltaban 8 columnas (`User.phone`, `User.pushSubscription`, `DisasterEvent.fetchedAt/stale`, `Location.shape/polygon`, `Notification.error`, `UserPreference.minSeverity`). Registro, login y `/api/events` respondían 500. Se arregla con `npx prisma db push` en `backend/` (solo agrega columnas e índices; verificado: 2 notificaciones, 0 duplicados para el nuevo `@@unique`).
+- 🐞 **El registro no devolvía token:** la UI mostraba al usuario conectado, pero zonas, alertas y preferencias fallaban con 401 y al recargar pedía entrar otra vez.
+- 🐞 **`/auth/me` devolvía `{ user }`** y el frontend lo trataba como el usuario: al recargar, el nombre salía vacío.
+- 🔒 **`/auth/me` exponía `passwordHash`** (usaba `include` sin `select`).
+- 🐞 Errores en inglés y técnicos en la UI ("Invalid credentials", "Invalid input").
+
+#### Cambios Realizados:
+- ✅ **`backend/src/routes/auth.ts`** — `signToken()` compartido; `register` responde `{ token, user }`; `/me` usa `select` con campos públicos (`id`, `email`, `username`, `phone`).
+- ✅ **`backend/test/auth.test.ts`** (nuevo, 4 tests) — registro con token válido, 409 por correo repetido, login 200/401, `/me` sin `passwordHash`.
+- ✅ **`src/services/api.ts`** — `getMe()` lee `response.data.user`; `register()` guarda el token; nuevos `fetchPreferences()` / `updatePreferences()`.
+- ✅ **`src/components/AuthModal.tsx`** — `authErrorMessage()`: mensajes en español según el estado HTTP (sin conexión, 401, 409, 400 por campo, 5xx); `minLength` de usuario (3) y de contraseña (8, solo al registrarse).
+- ✅ **`src/components/SettingsPanel.tsx`** (nuevo) — el botón ⚙️ abre "Configuración de alertas", conectado a `/api/preferences`: tipos de evento (los 7 que acepta el backend), severidad mínima, canales push/email/SMS con teléfono E.164 validado. Sin sesión, ofrece iniciarla. El radio por defecto no se muestra porque el motor solo lo usa si una zona no tiene radio propio.
+- ✅ **`src/components/Header.tsx`** + **`src/App.tsx`** — `onSettingsClick` y estado `showSettings`.
+- ✅ **`src/components/NotificationsPanel.tsx`** — 360 → 460 px de ancho, 540 → 720 px de alto, títulos en 2 líneas (`line-clamp-2`) y texto/espaciado más legibles.
+
+#### Estado:
+- ✅ TSC backend y frontend: 0 errores · tests backend 150/150 (17 archivos)
+- ✅ Probado en el navegador: error de login en español, Configuración sin sesión, panel de alertas a 460 px dentro del viewport
+- ✅ BD local sincronizada (`prisma db push --accept-data-loss` en `backend/`); el primer ciclo de ingesta posterior insertó 238 eventos (USGS 199, EONET 37, NHC 2)
+- ✅ Con sesión: registro → sesión iniciada; recarga → la sesión y el nombre se mantienen; Configuración carga, valida el teléfono (sin código de país o demasiado largo → no deja guardar) y guarda (verificado contra `GET /api/preferences`)
+
+#### Motor de alertas — email/SMS nunca salían con la app abierta:
+- 🐞 Con el WebSocket abierto, `matchEvent` marcaba como `sent` **todas** las notificaciones del evento (push, email y SMS) de **todos** los usuarios coincidentes, antes de llamar al despachador. Este solo procesa las `pending`, así que con la app abierta el email y el SMS no se enviaban nunca, aunque SendGrid o Twilio estuvieran configurados. Se detectó porque los emails figuraban como `sent` sin `SENDGRID_API_KEY`.
+- ✅ **`backend/src/services/matching.ts`** — `pushToSockets` devuelve los `userId` que recibieron la alerta en vivo; el `updateMany` marca `sent` solo `channel: 'push'` de esos usuarios.
+- ✅ **`backend/test/alert-engine.int.test.ts`** — el Prisma falso aplica el `where` del `updateMany`; nuevo test "con el WS abierto marca enviado solo el push…". Falla sin el arreglo (`expected 'sent' to be 'pending'`) y pasa con él.
+- ✅ Prueba real de punta a punta: zona de 600 km en California para el usuario de prueba → en ~3 min, 2 sismos de USGS cerca de Anza, CA (298 km) → 4 notificaciones (push + email) → visibles en el panel de alertas (460 px, dentro del viewport).
+- ℹ️ Los títulos de USGS llegan en inglés ("4 km WSW of Anza, CA").
+
+#### Push offline (Web Push) nunca se configuraba:
+- 🐞 Al arrancar: `[PUSH] VAPID no configurado — webpush.setVapidDetails is not a function`. `web-push` es CommonJS y el backend es ESM (`"type": "module"`): con `import * as webpush` las funciones no existen (solo están en el export por defecto), así que `sendPush` devolvía siempre `false`. El mock del test exponía exports con nombre y ocultaba el fallo.
+- ✅ **`backend/src/services/push.ts`** — `import webpush from 'web-push'`.
+- ✅ **`backend/src/types/web-push.d.ts`** — tipado como export por defecto.
+- ✅ **`backend/test/push.test.ts`** — el mock replica la forma real del paquete (`{ default: {...} }`).
+- ✅ Verificado: TSC 0 · `push` + `alert-engine` 10/10 · cargar `push.ts` con `tsx` ya no muestra el aviso de VAPID.
+
+#### GPS de "Zonas de alerta":
+- ✅ **`src/components/LocationPanel.tsx`** — `GEO_ERRORS` por código (1 permiso bloqueado → candado del navegador; 2 no disponible → ubicación de Windows; 3 tiempo agotado). `enableHighAccuracy: false`, `timeout` 15 s y `maximumAge` 5 min: en un PC sin GPS la alta precisión agotaba los 8 s.
+- ✅ Probado con permiso denegado: muestra el mensaje del candado.
+
+### **2026-10-25 — Demo público gratuito en GitHub Pages** · `cd18630`
+#### Cambios Realizados:
+- ✅ **`src/services/api.ts`** — `DEMO_MODE` (`import.meta.env.MODE === 'demo'`).
+- ✅ **`src/App.tsx`** — en modo demo no llama al backend, carga `DEMO_EVENTS` directo, no abre el login automáticamente y avisa "Demo público: eventos simulados…".
+- ✅ **`src/components/AuthModal.tsx`** — en modo demo, el envío muestra "El demo público no tiene backend…" en lugar de un error HTTP.
+- ✅ **`package.json`** — `npm run build:demo` (`vite build --mode demo --base=/ALERTA360/`).
+- ✅ **`.github/workflows/pages.yml`** (nuevo) — en cada push a `main` construye el demo, copia `index.html` a `404.html` (fallback SPA) y lo publica en `https://armado719.github.io/ALERTA360/`.
+
+#### Estado:
+- ✅ TSC frontend 0 · `build:demo` OK (2.465 módulos, assets bajo `/ALERTA360/`)
+- ✅ Probado con `vite preview` en `/ALERTA360/`: mapa 2D con 178 eventos, vista 3D (chunk diferido), login desactivado con aviso, 0 errores de consola, 0 peticiones a `/api`
+- ⏳ Activar una vez: Settings → Pages → Source: **GitHub Actions**
+
+### **2026-10-25 — Fix CI: el job "Backend Build & Test" fallaba siempre** · `e508686`
+#### Cambios Realizados:
+- ✅ **`backend/vitest.config.ts`** — `css: { postcss: {} }`. Vite busca un `postcss.config.js` hacia arriba desde `backend/` y encontraba el del frontend (raíz), que carga `tailwindcss`. El job de backend solo instala `backend/node_modules`, así que Vitest abortaba antes de ejecutar ningún test. En local no se notaba porque la raíz tiene `tailwindcss` instalado.
+- Venía fallando en `main` desde que se añadieron los tests al CI (`f071dee`).
+
+#### Estado:
+- ✅ Clon limpio sin `.env` + `npm ci` solo en `backend/` + `npm test`: 146/146 (16 archivos)
+
+### **2026-10-25 — Reorganización de la bitácora (v1.3 → v1.4)** · `dea114e`
+#### Cambios Realizados:
+- ✅ Orden cronológico restaurado según la fecha de los commits; cuatro bloques sin título ni fecha ahora tienen su entrada.
+- ✅ Eliminados duplicados: B3 escalada (2 entradas), motor de alertas del 17/18-10 (2 entradas) y Fase 3 producción (3 entradas fusionadas en una).
+- ✅ Conteos de tests corregidos con los valores reales de cada commit (ej.: geolocalización+GDACS = 103, no 52/90; digest = 118, no 122; B1 = 126, no 130).
+- ✅ Añadida la entrada que faltaba de `f071dee` (Bloque 0: CI, claves, Swagger, EONET con 26 tests).
+- ✅ NHC registrado como fuente nueva **A4** (antes figuraba como "fix #7 D2").
+- ✅ Actualizadas las secciones de resumen de fases, estructura, métricas y pendientes; se quitaron métricas sin medición (tiempo de carga, "runtime errors 0").
+
+---
+
+### **2026-10-20 — FASE 4 A4: fuente NHC (ciclones tropicales)** · `dea114e` (reescrita en `cd18630`)
+#### Cambios Realizados:
+- ✅ **`backend/src/services/ingestion.ts`** — Fuente nueva **NHC Forecast Cone** (ArcGIS REST de NOAA, capa 7 de `NHC_tropical_weather_summary`):
+  - `registerSource('nhc')` + `fetchNHC()` (GeoJSON, `User-Agent` identificado).
+  - `mapNHC(feature)` — cono de incertidumbre (`Polygon`) → evento `hurricane` anclado al centroide (`polygonCentroid` de `geo.ts`). Severidad por viento máximo (kts): ≥96 critical · 64–95 high · 34–63 medium · <34 low. Cono completo en `rawData.cone`. `externalId = nhc-<stormId>-<advisory>`. Cuenca derivada del prefijo (AL/EP/CP/WP).
+  - Caso NHC en `runIngestion` con circuit breaker (`canFetch` / `reportSuccess` / `reportFailure`), dedup por `externalId`, hooks de matching, métrica `ingestionEventsTotal{source="nhc"}` y log del ciclo. El tipo de retorno incluye `nhc`.
+  - **Bug corregido durante el desarrollo:** el ring se convertía a `[lat, lon]` (`[c[1], c[0]]`) aunque `polygonCentroid` espera `[lon, lat]`, y devolvía latitude=-80.2 en vez de 25.6. Ahora se usa `[c[0], c[1]]`, igual que `extractNOAACoords`.
+- ✅ **`backend/src/utils/config.ts`** — `NHC_ENABLED` (default **`true`**), `NHC_URL`, `NHC_TIMEOUT` (10 s).
+- ✅ **`backend/test/nhc.test.ts`** (nuevo, 4 tests) — cono → hurricane con polygon en `rawData`, null sin `Polygon`, escala de severidad por viento, descarte de null-island.
 
 #### Estado:
 - ✅ TSC backend: 0 errores
-- ✅ Tests: 130/130
+- ✅ Tests: 146 (16 archivos)
+- ✅ `NHC_ENABLED` / `NHC_URL` / `NHC_TIMEOUT` documentados en `backend/.env.example` y `.env.production.example`, y reenviados al backend en `docker-compose.prod.yml` (2026-10-25). Antes, compose no los pasaba al contenedor y un `NHC_ENABLED=false` en producción se habría ignorado.
+- ℹ️ `NHC_ENABLED` arranca en `true`, a diferencia de Meteoalarm/Digest (`false`).
 
-### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #7 D2 zonas polígono)**
-#### Cambios Realizados:
-- ✅ `backend/prisma/schema.prisma` — `Location.shape String @default("circle")` + `Location.polygon Json?` (GeoJSON).
-- ✅ backend/src/utils/geo.ts — `pointInPolygon` (ray casting) + `pointInPolygonAntimeridian` (maneja cruce ±180°).
-- ✅ backend/src/services/matching.ts — `matchCandidate` branch: `shape="polygon"` → punto-en-polígono (`distanceKm=0`); `findMany` select incluye `shape, polygon`; +`normalizePolygonCoords`.
-- ✅ `backend/test/geo-polygon.test.ts` (nuevo, 7 tests) — dentro/fuera + antimeridiano Fiji (179°E/179°W).
-- ✅ `backend/test/matching.test.ts` — +2 tests (evento dentro/fuera polígono).
+### **Ajustes de despliegue y documentación** · `dea114e`
+- ✅ **`.github/workflows/deploy.yml`** — `NODE_VERSION` 20 → 22; nuevo paso **"Validar secretos de despliegue"** (falla si faltan `PROD_HOST`, `PROD_USER` o `PROD_SSH_KEY`); corregido el nombre del archivo `.env.produccion` → `.env.production` (3 sitios: despliegue y rollback).
+  - ✅ El paso nuevo había quedado insertado **en medio** de "Validar artefacto" y se llevó `test -f dist/status.html` y `du -sh dist` a "Validar secretos". Devueltos a su paso el 2026-10-25 (YAML validado).
+  - ✅ Nombre unificado como `.env.production` también en el comentario de `.env.production.example` y en `docs/FASE_3_PRODUCCION.md` (2026-10-25). Antes un servidor montado siguiendo el runbook habría fallado al desplegar.
+  - ✅ El runbook (línea 109) copiaba desde `.env.example` (el del frontend, sin `DB_*`, `JWT_SECRET` ni `GRAFANA_PASSWORD`). Ahora hace `cp .env.production.example .env.production`. El comentario de `nginx.conf:137` también usa el nombre nuevo (2026-10-25).
+  - ℹ️ `.gitignore` ignora ambos nombres a propósito, para que un `.env.produccion` antiguo nunca se suba.
+- ✅ Borrados `FASE_1_RESUMEN.md`, `FASE_2_RESUMEN.md` y `FASE_3_RESUMEN.md`; el detalle sigue en `AUDITORIA_FASE_N.md` y en esta bitácora.
+- ✅ Versionado `MEJORAS_DESDE_WORLD_INTEL.md` (el catálogo de mejoras que se usa en la Fase 4).
 
-#### Estado:
-- ✅ TSC 0 · Tests 142/142
-- ✅ **Frontend D2** — `LocationPanel` toggle círculo/polígono + textarea vértices `(lat,lon)` → GeoJSON `Polygon` (centroide como lat/lng, `lon,lat` ring); `api.ts` `Location` + `createLocation` extienden `shape?`/`polygon?`; `LocationItem` badge polígono/vértices; `backend/src/routes/locations.ts` zod `shape` + `polygon` + create data. TSC frontend LIMPIO, `npm run build` OK (chunk warning único).
+---
 
-### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #6 D1 test + refactor)**
-#### Cambios Realizados:
-- ✅ **`backend/src/routes/geocode.ts`** — extrae `mapNominatimResults` (pura) del handler; `requireGeocodeEnabled` ahora hace `return reply.status(503)` (bug: el preHandler no terminaba la petición).
-- ✅ **`backend/test/geocode.test.ts`** (nuevo, 3 tests) — mappeo pura (coords + filtro ítems sin coords) + guard 503.
-- ✅ Reemplazado mock flaky de axios por test de función pura (determinístico, 49 ms).
-- 25/25 tests.
+### **2026-10-19 — FASE 4 #7 D2: zonas de alerta con polígono** · `41c204a` + `745e0c4`
+#### Cambios Realizados (backend — `41c204a`):
+- ✅ **`backend/prisma/schema.prisma`** — `Location.shape String @default("circle")` + `Location.polygon Json?` (GeoJSON).
+- ✅ **`backend/src/utils/geo.ts`** — `pointInPolygon` (ray casting) + `pointInPolygonAntimeridian` (cruce de ±180°).
+- ✅ **`backend/src/services/matching.ts`** — `matchCandidate`: si `shape="polygon"` usa punto-en-polígono (`distanceKm=0`); el `findMany` selecciona `shape, polygon`; nuevo `normalizePolygonCoords`.
+- ✅ **`backend/test/geo-polygon.test.ts`** (nuevo, 7 tests) — dentro/fuera + antimeridiano en Fiji (179°E/179°W).
+- ✅ **`backend/test/matching.test.ts`** — +2 tests (evento dentro/fuera del polígono).
 
-#### Estado:
-- ✅ TSC 0 · Tests 133/133
-
-### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #5 B3 escalada por exposición)**
-#### Cambios Realizados:
-- ✅ `backend/src/services/analysis/exposure.ts` — `computeEscalationLevel(population, severity, radiusKm?): 0-4` (score = millones expuestos + peso severity + ajuste radio).
-- ✅ `backend/src/routes/events.ts` — expone `escalationLevel` en `GET /api/events` + `/:id`.
-- ✅ `+4 tests` en exposure.test.
+#### Cambios Realizados (frontend — `745e0c4`):
+- ✅ **`src/components/LocationPanel.tsx`** — toggle círculo/polígono + textarea de vértices `(lat,lon)` → GeoJSON `Polygon` (ring en `lon,lat`; el centroide se guarda como lat/lng). `LocationItem` con badge de polígono y número de vértices.
+- ✅ **`src/services/api.ts`** — `Location` y `createLocation` aceptan `shape?` / `polygon?`.
+- ✅ **`backend/src/routes/locations.ts`** — Zod `shape` + `polygon` y persistencia al crear.
 
 #### Estado:
-- ✅ TSC 0 · Tests 130/130
+- ✅ TSC backend y frontend: 0 errores · `npm run build` OK (solo aviso de tamaño de chunk)
+- ✅ Tests: 142 (15 archivos)
 
-### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #4 B1 población expuesta)**
+### **2026-10-19 — FASE 4 #6 D1: geocoding testeable + fix del guard 503** · `52a589c`
 #### Cambios Realizados:
-- ✅ **`backend/src/services/analysis/exposure.ts`** (nuevo) — `CITIES` (Top-15 áreas urbanas densas, datos UN 2022) + `estimateExposedPopulation(lat, lon, radiusKm?)` on-the-fly (reusa `haversineKm`).
-- ✅ **`backend/src/routes/events.ts`** — `GET /api/events` + `/:id` exponen `exposedPopulation` (población dentro de 50 km del epicentro).
-- ✅ **`backend/test/exposure.test.ts`** (nuevo, 4 tests) — exposición Tokio, 0 en mar abierto, radio configurable, dataset 15 ciudades.
-- Sin cambio de schema (cálculo on-the-fly, escalable a Top-N).
+- ✅ **`backend/src/routes/geocode.ts`** — se extrae `mapNominatimResults` (función pura) del handler; `requireGeocodeEnabled` ahora hace `return reply.status(503)` (bug: el preHandler no terminaba la petición).
+- ✅ **`backend/test/geocode.test.ts`** (nuevo, 3 tests) — mapeo puro (coords + filtro de ítems sin coords) + guard 503. Sustituye un mock de axios inestable por un test determinista (49 ms).
 
 #### Estado:
-- ✅ TSC backend: 0 errores
-- ✅ Tests: 130/130 (`exposure` 8 + `meteoalarm` 4 + `digest` 8 + `freshness` 2 + 108 previos)
+- ✅ TSC 0 · Tests: 133 (14 archivos)
 
-### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #3 A3 Meteoalarm)**
+### **2026-10-19 — FASE 4 #5 B3: nivel de escalada por exposición** · `0fbae5d`
 #### Cambios Realizados:
-- ✅ **`backend/src/services/ingestion.ts`** — `fetchMeteoalarm` + `mapMeteoalarm` (tipo/severidad/área vía maps), `registerSource('meteoalarm')`, caso en `runIngestion` con circuit breaker + flags, retorno + métricas + log actualizados.
+- ✅ **`backend/src/services/analysis/exposure.ts`** — `computeEscalationLevel(population, severity, radiusKm?): 0-4`. Score = millones expuestos + peso de severidad + ajuste por radio.
+  - Niveles: 0 sin exposición · 1 bajo (<1 M) · 2 medio · 3 alto · 4 crítico (>5 M o severidad crítica). Reutilizable en el motor de alertas y en el payload WS.
+- ✅ **`backend/src/routes/events.ts`** — `GET /api/events` y `/:id` exponen `escalationLevel` junto a `exposedPopulation`.
+- ✅ **`backend/test/exposure.test.ts`** — +4 tests (nivel 0/4, escalada por severidad, tope 4).
+
+#### Estado:
+- ✅ TSC 0 · Tests: 130 (13 archivos)
+
+### **2026-10-19 — FASE 4 #4 B1: población expuesta** · `f20933a`
+#### Cambios Realizados:
+- ✅ **`backend/src/services/analysis/exposure.ts`** (nuevo) — `CITIES` (Top-15 áreas urbanas densas, datos ONU 2022) + `estimateExposedPopulation(lat, lon, radiusKm?)` calculado al vuelo (reusa `haversineKm`).
+- ✅ **`backend/src/routes/events.ts`** — `GET /api/events` y `/:id` exponen `exposedPopulation` (población a ≤50 km del epicentro).
+- ✅ **`backend/test/exposure.test.ts`** (nuevo, 4 tests) — Tokio, 0 en mar abierto, radio configurable, dataset de 15 ciudades.
+- Sin cambio de schema (escalable a Top-N).
+
+#### Estado:
+- ✅ TSC 0 · Tests: 126 (13 archivos)
+
+### **2026-10-19 — FASE 4 #3 A3: fuente Meteoalarm (Europa)** · `f5b5154`
+#### Cambios Realizados:
+- ✅ **`backend/src/services/ingestion.ts`** — `fetchMeteoalarm` + `mapMeteoalarm` (tipo/severidad/área vía mapas), `registerSource('meteoalarm')`, caso en `runIngestion` con circuit breaker y flags, métricas y log.
 - ✅ **`backend/src/utils/config.ts`** — `METEOALARM_ENABLED` (default `false`), `METEOALARM_URL`, `METEOALARM_COUNTRIES`, `METEOALARM_TIMEOUT`.
-- ✅ **`backend/test/meteoalarm.test.ts`** (nuevo, 4 tests) — mapeo, null por coords, severity default, externalId sin colisión.
-- Endpoint configurable (no hay JSON público estable de Meteoalarm para toda Europa); el mapeo asume contrato JSON `[{type, severity, lat, lon, onset, area, title, description}]`.
+- ✅ **`backend/test/meteoalarm.test.ts`** (nuevo, 4 tests) — mapeo, null sin coords, severidad por defecto, `externalId` sin colisión.
+- ⚠️ Endpoint configurable: no hay un JSON público estable de Meteoalarm para toda Europa. El mapeo asume el contrato `[{type, severity, lat, lon, onset, area, title, description}]`.
 
 #### Estado:
-- ✅ TSC backend: 0 errores
-- ✅ Tests: 122/122 (`meteoalarm` 4 + `digest` 8 + `freshness` 2 + 108 previos)
+- ✅ TSC 0 · Tests: 122 (12 archivos)
 
-### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #2 B5 resumen diario)**
+### **2026-10-19 — FASE 4 #2 B5: resumen diario por email** · `68e1c8a` + `0a564fe`
 #### Cambios Realizados:
-- ✅ **`backend/src/services/notifications/digest.ts`** (nuevo) — `collectDigestEvents` (24 h activos/no stale), `filterEventsForUser` (tipo + severidad + radio haversine), `sendDailyDigest` reusando `sendEmail`/`email.ts` (SendGrid), `startDigestScheduler` (daily a `DIGEST_HOUR`).
-- ✅ **`backend/src/utils/config.ts`** — `DIGEST_ENABLED` (default `false`, dev) + `DIGEST_HOUR` (default 8 UTC).
+- ✅ **`backend/src/services/notifications/digest.ts`** (nuevo) — `collectDigestEvents` (24 h, activos y no `stale`), `filterEventsForUser` (tipo + severidad + radio haversine), `sendDailyDigest` (reusa `sendEmail` / SendGrid) y `startDigestScheduler` (diario a `DIGEST_HOUR`).
+- ✅ **`backend/src/utils/config.ts`** — `DIGEST_ENABLED` (default `false`) + `DIGEST_HOUR` (default 8 UTC).
 - ✅ **`backend/src/index.ts`** — arranca `startDigestScheduler(app.prisma)`.
-- ✅ **`backend/test/digest.test.ts`** (nuevo, 7 tests) — filtrado, envío, skip-when-disabled, failed, delay.
-- ✅ `notificationsDelivered` metrica email por `channel`/`status`.
+- ✅ **`backend/test/digest.test.ts`** (nuevo, 8 tests) — filtrado, envío, skip cuando está desactivado, fallo, delay.
+- ✅ Métrica `notificationsDelivered` del email por `channel` / `status`.
 
 #### Estado:
-- ✅ TSC backend: 0 errores
-- ✅ Tests: 122/122 (`meteoalarm` 4 + `digest` 8 + `freshness` 2 + 108 previos)
-- ✅ Schema sin cambios desde #1
+- ✅ TSC 0 · Tests: 118 (11 archivos) · sin cambios de schema
 
-### **2026-10-19 — FASE 4 (catálogo de mejoras corregido + #1 Freshness)**
+### **2026-10-19 — FASE 4 #1: frescura de eventos (fetchedAt / stale)** · `07569df`
 #### Cambios Realizados:
-- ✅ `MEJORAS_DESDE_WORLD_INTEL.md` auditado: A1 (EONET) + A2 (GDACS) YA implementados en `ingestion.ts`; el doc analizó `world-intel-mcp` externo. Plan corregido prioriza por impacto real.
-- ✅ **`backend/prisma/schema.prisma`** — `DisasterEvent.fetchedAt DateTime @default(now())` + `stale Boolean @default(false)` + índices `@@[fetchedAt]`/`@@[stale]`.
-- ✅ **`backend/src/services/ingestion.ts`** — `runFreshnessSweep(prisma, staleAfterMs?)` marca `stale=true` a eventos con `fetchedAt` vencido; corre al startup y cada ciclo del scheduler. Nunca lanza (catch interno).
-- ✅ **`backend/src/routes/events.ts`** — `GET /api/events` + `/:id` exponen `fetchedAt` y `stale`.
+- ✅ **`MEJORAS_DESDE_WORLD_INTEL.md`** auditado: A1 (EONET) y A2 (GDACS) **ya estaban** implementados en `ingestion.ts` (el documento analizaba el repo externo `world-intel-mcp`). Plan corregido y priorizado por impacto real.
+- ✅ **`backend/prisma/schema.prisma`** — `DisasterEvent.fetchedAt DateTime @default(now())` + `stale Boolean @default(false)` + índices en ambos.
+- ✅ **`backend/src/services/ingestion.ts`** — `runFreshnessSweep(prisma, staleAfterMs?)` marca `stale=true` cuando `fetchedAt` venció; corre al arrancar y en cada ciclo. Nunca lanza.
+- ✅ **`backend/src/routes/events.ts`** — `GET /api/events` y `/:id` exponen `fetchedAt` y `stale`.
 - ✅ **`backend/src/utils/config.ts`** — `STALE_AFTER_MINUTES` (default 30).
-- ✅ **`backend/test/freshness.test.ts`** (nuevo, 2 tests) — sweep marca stale con `where:{stale:false,fetchedAt:{lt},isActive:true}` + manejo de fallo retorna 0.
+- ✅ **`backend/test/freshness.test.ts`** (nuevo, 2 tests) — filtro `where:{stale:false, fetchedAt:{lt}, isActive:true}` + fallo devuelve 0.
 
 #### Estado:
-- ✅ TSC backend: 0 errores (`tsc --noEmit`)
-- ✅ Tests: 110/110 (`vitest run`) — 2 freshness + 108 previos
-- ✅ Schema sincronizada (`prisma generate`)
+- ✅ TSC 0 · Tests: 110 (10 archivos) · `prisma generate` OK
 
-### **2026-10-19 — FASE 3: notificaciones push offline (Service Worker + Web Push VAPID)**
+### **2026-10-19 — FASE 3: notificaciones push offline (Service Worker + Web Push VAPID)** · `aa9a275`
 #### Cambios Realizados:
-- ✅ **`backend/src/utils/config.ts`** — Vars `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` (defaults para dev; en prod por env).
-- ✅ **`backend/prisma/schema.prisma`** — Campo `User.pushSubscription Json?` (subscription del navegador). `prisma generate` OK.
-- ✅ **`backend/src/services/push.ts`** (nuevo) — `sendPush(subscription, payload)` vía `web-push` con VAPID; nunca lanza (catch + log).
-- ✅ **`backend/src/services/matching.ts`** — `pushToSockets` ahora recibe los candidatos; si `hub.sendToUser` retorna 0 (sin WS conectado) hace **fallback a `sendPush`** con payload `{title, body, data:{eventId, lat, lng, url}}`. La query incluye `user.pushSubscription`.
-- ✅ **`backend/src/routes/notifications.ts`** — `POST /api/notifications/subscribe` (guarda subscription, Zod-validada) + `GET /api/notifications/vapid` (clave pública para el cliente). Auth JWT requerido.
-- ✅ **`backend/src/types/web-push.d.ts`** (nuevo) — Declarations mínimas para `web-push`.
-- ✅ **`backend/test/push.test.ts`** (nuevo, 4 tests) — `web-push` mockeado: envío OK → true, sin subscription → false, fallo 410 → false, payload JSON correcto.
-- ✅ **`backend/test/alert-engine.int.test.ts`** — Test añadido: *fallback a push offline cuando el usuario no tiene WS conectado* (`hub.sendToUser` → 0 + subscription → `sendPush` llamado). `sendPush` mockeado; `vitest 108/108`.
-- ✅ **`public/sw.js`** (JS puro) — `push` → `showNotification(title,{body,icon,badge,data,requireInteraction,actions})`; `notificationclick` → focus/open `data.url`; `install` skipWaiting; `activate` limpia cache.
-- ✅ **`src/hooks/usePushSubscription.ts`** (nuevo) — Registro SW `/sw.js`, permiso notificaciones, fetch VAPID key, `pushManager.subscribe(applicationServerKey)`, POST subscription. Estado `{supported, ready, subscribed, permission}`.
-- ✅ **`src/services/api.ts`** — `fetchVapidKey()` + `subscribeToPush(sub)`; reemplaza `subscribeToAlerts(locationId)` (huérfana, sin uso).
-- ✅ **`src/App.tsx`** — `usePushSubscription(!!user)` dispara el registro push cuando el usuario está autenticado.
+- ✅ **`backend/src/utils/config.ts`** — `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` (defaults de dev; en prod por env).
+- ✅ **`backend/prisma/schema.prisma`** — `User.pushSubscription Json?`.
+- ✅ **`backend/src/services/push.ts`** (nuevo) — `sendPush(subscription, payload)` con `web-push`; nunca lanza.
+- ✅ **`backend/src/services/matching.ts`** — si `hub.sendToUser` devuelve 0 (sin WS conectado) hace **fallback a `sendPush`** con `{title, body, data:{eventId, lat, lng, url}}`; la query incluye `user.pushSubscription`.
+- ✅ **`backend/src/routes/notifications.ts`** — `POST /api/notifications/subscribe` (Zod) + `GET /api/notifications/vapid`. JWT requerido.
+- ✅ **`backend/src/types/web-push.d.ts`** (nuevo) — tipos mínimos.
+- ✅ **`backend/test/push.test.ts`** (nuevo, 4 tests) + test de fallback offline en `alert-engine.int.test.ts`.
+- ✅ **`public/sw.js`** — `push` → `showNotification`, `notificationclick` → abrir/enfocar `data.url`, `skipWaiting` y limpieza de caché.
+- ✅ **`src/hooks/usePushSubscription.ts`** (nuevo) — registro del SW, permiso, clave VAPID, `pushManager.subscribe`, POST de la suscripción.
+- ✅ **`src/services/api.ts`** — `fetchVapidKey()` + `subscribeToPush(sub)`; se elimina `subscribeToAlerts` (huérfana).
+- ✅ **`src/App.tsx`** — `usePushSubscription(!!user)`.
 
 #### Estado:
-- ✅ TSC backend: 0 errores (`tsc --noEmit`)
-- ✅ TSC frontend: 0 errores (`tsc --noEmit`)
-- ✅ Tests backend: 108/108 (`vitest run`) — incluye 4 push + 5 alert-engine (con fallback) + 17 matching + 82 previos
-- ✅ Build frontend: exitoso (`npm run build`, 2.512 módulos, `dist/sw.js` incluido)
-- ✅ Bitácora: v1.3
+- ✅ TSC backend y frontend: 0 errores
+- ✅ Tests: 108 (9 archivos)
+- ✅ Build frontend OK (`dist/sw.js` incluido)
 
-### **2026-10-19 — Geolocalización, zonas de alerta + validación e2e del motor de alertas**
+### **2026-10-19 — Zonas de alerta, geolocalización, GDACS + circuit breaker y test e2e del motor (v0.4.1)** · `bd67bb2`
+#### Cambios Realizados (fuentes globales — Bloque 0):
+- ✅ **`backend/src/services/sources/types.ts`** (nuevo) — contrato `MappedEvent` / `Source` + `isNullIsland` / `isValidPoint`.
+- ✅ **`backend/src/services/sources/health.ts`** (nuevo) — circuit breaker: 3 fallos seguidos → `down` + cooldown de 5 min; sin datos frescos en 30 min → `degraded`.
+- ✅ **`backend/src/routes/sources.ts`** (nuevo) — `GET /api/sources/health` (`complete`, `sources[]`, `intervalMs`).
+- ✅ **`backend/src/services/ingestion.ts`** — los fetchers **lanzan** errores (antes un catch silencioso confundía "caído" con "0 eventos"); circuit breaker en el ciclo; GDACS (fetch + `mapGDACS` + métricas); `EONET_BBOX` y `EONET_DAYS` configurables.
+- ✅ **`backend/src/utils/config.ts`** + **`backend/.env.example`** — `GDACS_ENABLED`, `GDACS_DAYS`, `EONET_BBOX`, `EONET_DAYS`, `INGEST_INTERVAL`.
+- ✅ **`backend/test/sources.test.ts`** (nuevo) — circuit breaker (abrir / cerrar / cooldown) + `mapGDACS`.
+
+#### Cambios Realizados (zonas y geolocalización):
+- ✅ **`backend/src/routes/geocode.ts`** (nuevo) — proxy de Nominatim (`/api/geocode/search` + reverse).
+- ✅ **`src/components/LocationPanel.tsx`** (nuevo) — buscador con autocomplete (debounce 500 ms), GPS del navegador + `reverseGeocode`, slider de radio 1–1000 km, guardar/borrar zonas, lista con contador.
+- ✅ **`src/components/Header.tsx`** — botón MapPin con badge de zonas.
+- ✅ **`src/components/Map.tsx`** — `LocationCircles` dibuja el círculo de cobertura de cada zona.
+- ✅ **`src/App.tsx`** — estado `locations` + `showLocationPanel`, `saveLocation` / `deleteLocation`.
+- ✅ **`backend/test/alert-engine.int.test.ts`** (nuevo, 4 tests) — `buildApp({ prisma: fakePrisma })` + **hub WS real** + `fakeSocket`: push al WS, dedup en BD (`created:0` al repetir), sin WS persiste la notificación, sin match fuera del radio.
+- ✅ Motor validado de punta a punta: zona → ingesta → `matchEvent` → `hub.sendToUser` → WS → cliente.
+
+#### Estado:
+- ✅ TSC backend y frontend: 0 errores · build backend y frontend OK
+- ✅ Tests: 103 (8 archivos)
+- ⚠️ El motor empuja al WS en cada matching (stateless); la dedup es solo en BD (`createMany skipDuplicates` + `@@unique`). El cliente (`useAlerts.ts`) deduplica visualmente por `eventId`. `notifications/dispatch.ts` es fire-and-forget y loguea ruido cuando el Prisma falso no devuelve el evento completo. Aceptado porque nunca rompe la ingesta.
+
+### **2026-10-19 — Bloque 0: infraestructura productiva (CI, claves, Swagger, latencia)** · `f071dee`
 #### Cambios Realizados:
-- ✅ **`src/components/LocationPanel.tsx`** (nuevo) — Modal de zonas de alerta: buscador con autocomplete (Nominatim vía `/api/geocode/search`, debounce 500 ms), geolocalización GPS del navegador (`navigator.geolocation` + `reverseGeocode`), slider radio 1–1000 km, guardar/borrar zonas (POST/DELETE `/api/locations`), lista de zonas existentes con contador.
-- ✅ **`src/components/Header.tsx`** — Botón MapPin de zonas con badge de contador (`locationsCount`).
-- ✅ **`src/components/Map.tsx`** — `LocationCircles` dibuja el círculo de cobertimiento (cian, `L.circle`) de cada zona; prop `locations?: Location[]`.
-- ✅ **`src/App.tsx`** — Estado `locations` + `showLocationPanel`, carga vía `fetchLocations`, handlers `saveLocation`/`deleteLocation` (refetch).
-- ✅ **`backend/test/alert-engine.int.test.ts`** (nuevo, 4 tests) — Integración: `buildApp({ prisma: fakePrisma })` + **hub WS REAL** + `fakeSocket` (`readyState:1`/`send`). Valida: AlertPayload push al WS, dedup BD (`created:0` en re-matching), push sin WS conectado (persiste notificación), y sin match fuera del radio.
-- ✅ Motor de alertas (`services/matching.ts`) validado e2e: crear zona → ingesta → `matchEvent` → `hub.sendToUser` → WS → cliente.
+- ✅ **`.github/workflows/ci.yml`** — YAML válido otra vez (había un EOF suelto y un `with:` duplicado); se agregan los tests al pipeline.
+- ✅ **`docker-compose.prod.yml`** — paso de claves al backend (SendGrid, Twilio, GDACS, Nominatim) + `INGEST_INTERVAL=120000` (latencia de 2 min).
+- ✅ **`nginx.conf`** — `location /docs` y `/openapi.json` (Swagger UI accesible).
+- ✅ **`.env.production.example`** + **`backend/.env.example`** — variables globales, de geocodificación e `INGEST_INTERVAL`.
+- ✅ **`backend/src/services/ingestion.ts`** — corregido un `\n` literal que rompía el parseo; el tipo de retorno incluye `eonet`.
+- ✅ **`backend/test/eonet.test.ts`** (nuevo, 26 tests) — `mapEONET` (coordenadas, geometría más reciente, categorías, títulos, rawData, magnitud) + `mapEONETSeverity`.
+- ✅ **`src/data/demoEvents.ts`**, **`src/types/index.ts`**, **`src/components/Dashboard.tsx`** — 5 tipos nuevos (wildfire / drought / heatwave / snow / dust).
 
 #### Estado:
-- ✅ TSC backend: 0 errores (`tsc --noEmit`)
-- ✅ TSC frontend: 0 errores (`tsc --noEmit`)
-- ✅ Tests backend: 52/52 pasando (`vitest run`) — 17 matching + 4 alert-engine-int + 31 previos
-- ✅ Build frontend: OK (2464 módulos, `vite build` exit 0)
-- ⚠️ El motor hace push al WS en cada matching (stateless); la dedup es solo en BD (`createMany skipDuplicates` + `@@unique`). El cliente (`useAlerts.ts`) dedupa visualmente por `eventId` al refrescar la bandeja. El email/SMS dispatch (`notifications/dispatch.ts`) es fire-and-forget y puede loggear ruido si el mock Prisma no devuelve el evento completo — aceptado: nunca rompe la ingesta.
+- ✅ TSC backend y frontend: 0 errores
+- ✅ Tests: 74 (6 archivos)
 
 ---
 
-### **2026-10-19 — Fuente GDACS + Circuit Breaker (Bloque 0 del plan de fuentes globales)**
+### **2026-10-18 — Fase 1: entrega real de alertas (SendGrid + Twilio) y Swagger** · `6e9412e`
 #### Cambios Realizados:
-- ✅ **`backend/src/services/sources/types.ts`** (nuevo) — Contrato compartido `MappedEvent` / `Source` + helpers `isNullIsland` / `isValidPoint`.
-- ✅ **`backend/src/services/sources/health.ts`** (nuevo) — Circuit breaker: 3 fallos consecutivos → `down` + cooldown 5 min, freshness 30 min → `degraded`; exponible vía `/api/sources/health`.
-- ✅ **`backend/src/routes/sources.ts`** (nuevo) — Endpoint `GET /api/sources/health` con `complete`, `sources[]`, `intervalMs`.
-- ✅ **`backend/src/app.ts`** — Registra la ruta sources; CORS mejorado.
-- ✅ **`backend/src/services/ingestion.ts`** — Refactorizado: fetchers ahora **lanzan** errores (no catch silencioso que confunde "caído" con "0 eventos"), circuit breaker en el ciclo principal (`canFetch` / `reportSuccess` / `reportFailure`), GDACS (fetch + `mapGDACS` + métricas), EONET con `EONET_BBOX` y `EONET_DAYS` configurables.
-- ✅ **`backend/src/utils/config.ts`** — Vars `GDACS_ENABLED`, `GDACS_DAYS`, `EONET_BBOX`, `EONET_DAYS`.
-- ✅ **`backend/.env.example`** — Documentadas vars GDACS / EONET / INGEST_INTERVAL.
-- ✅ **`backend/test/sources.test.ts`** (nuevo) — 16 tests: circuit breaker (open / close / cooldown) + `mapGDACS`.
+- ✅ **`backend/src/services/notifications/`** (nuevo):
+  - `dispatch.ts` — orquestador: toma las notificaciones `pending` de email/sms, las envía y actualiza el estado (`sent` / `failed` / `skipped`). Fire-and-forget desde el matching; inyección de dependencias (`DispatchDeps`).
+  - `email.ts` — SendGrid REST v3 (`/v3/mail/send`) con `axios`. `skipped` si falta `SENDGRID_API_KEY`.
+  - `sms.ts` — Twilio REST (`/Messages.json`) con `axios`. Valida formato E.164.
+- ✅ **`backend/src/routes/docs.ts`** + **`backend/src/docs/openapi.ts`** (nuevo) — Swagger UI en `/docs`, spec en `/openapi.json`. Desactivable con `DOCS_ENABLED=false`.
+- ✅ **`backend/src/plugins/metrics.ts`** — métrica `notificationsDelivered{channel, status}`.
+- ✅ **`backend/src/utils/config.ts`** — `SENDGRID_API_KEY`, `EMAIL_FROM`, `SENDGRID_BASE_URL`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, `TWILIO_BASE_URL`, `DOCS_ENABLED`. Defaults vacíos: el motor funciona sin configurarlos.
+- ✅ **`backend/src/routes/preferences.ts`** — `PUT /api/preferences` gestiona `User.phone` (E.164); el GET lo incluye.
+- ✅ **`backend/prisma/schema.prisma`** — `User.phone String?`, `Notification.error String?`, `status` admite `skipped`.
+- ✅ **`backend/package.json`** — `@fastify/swagger@^8.15.0` + `@fastify/swagger-ui@^2.1.0` (Fastify 4). Se quitan `@sendgrid/mail` y `twilio` (se usa `axios` directo).
+- ✅ **Tests** — `dispatch.test.ts` (7) y `docs.test.ts` (3).
 
 #### Estado:
-- ✅ TypeScript backend: 0 errores (`tsc --noEmit`)
-- ✅ Tests: 90/90 pasando (`vitest run`) — incluye 16 nuevos
-- ✅ Build backend: exitoso (`npm run build`)
-- ⏳ `getSourceStatus` retorna siempre el status; el cooldown se verifica via `canFetch` (no reloj fake en tests)
+- ✅ TSC 0 · build backend OK · build frontend OK (2.461 módulos, `status.html` incluido)
+- ✅ Tests: 48 (5 archivos)
 
+### **2026-10-17/18 — Fase 3: producción lista + Fase 4: motor de alertas + fix crítico de `asyncHandler`** · `e0be01d` + `0755507`
+#### Cambios Realizados (Fase 3 — producción):
+- ✅ Se integró el paquete `alerta360-produccion-alertas` (29 archivos) y se borraron las copias `alerta360-fase3`, `alerta360-fase3 (1)` y `alerta360-ui-redesign (1)`.
+- ✅ **`backend/src/plugins/metrics.ts`** (nuevo) — Prometheus con `prom-client@15.1.3`: métricas de proceso `alerta360_*`, histograma y contador HTTP por método/ruta/estado, gauges de ingesta (última correcta, duración, eventos activos, errores por fuente).
+- ✅ **`backend/src/index.ts`** — `GET /metrics`; `/health` enriquecido (latencia de BD, frescura de ingesta, uptime, versión) que responde **503** si PostgreSQL falla; apagado ordenado con SIGTERM/SIGINT.
+- ✅ **`backend/src/services/ingestion.ts`** — instrumentación por ciclo: eventos nuevos por fuente, errores, duración y última ingesta correcta.
+- ✅ **`monitoring/`** — `alerts.yml` (8 reglas: API caída, 5xx >5 %, p95 >1 s, ingesta parada >15 min, 3 h sin eventos, errores de inserción, memoria >512 MB, pico de tráfico), `alertmanager.yml` (webhook `ALERT_WEBHOOK_URL` + inhibición), `prometheus.yml` y Grafana provisionado (6 stats + 5 series).
+- ✅ **`docker-compose.prod.yml`** — 10 servicios con healthchecks, límites de logs y puertos de observabilidad solo en `127.0.0.1`: backend, nginx, certbot (renovación cada 12 h), prometheus, alertmanager, grafana, node-exporter, postgres-exporter y backup diario.
+- ✅ **`nginx.conf`** — TLS 1.2/1.3, HSTS, CSP, `Permissions-Policy`, caché inmutable de `/assets`, `/status`, ACME en HTTP, `/metrics` bloqueado al exterior, gzip ampliado y bloque `real_ip` de Cloudflare (22 rangos) listo para descomentar.
+- ✅ **`public/status.html`** (nuevo) — página de estado pública que consulta `/health` cada 30 s.
+- ✅ **`backend/Dockerfile`** — multi-stage, usuario `node`, `HEALTHCHECK`.
+- ✅ **`scripts/`** — `backup.sh` (contenedor u host, retención, S3 opcional), `deploy.sh` (levanta la BD antes del `db push`, health check con reintentos, `.current_tag`) e `init-letsencrypt.sh`. `chmod +x` en `0755507`.
+- ✅ **`.github/workflows/deploy.yml`** — reescrito: compila `dist/` en CI y lo sube por `rsync` con swap atómico (antes el frontend **no se desplegaba**), `docker compose` v2, espera `pg_isready`, `prisma db push`, `nginx -t`, health check local y público, y **rollback automático** (dist anterior + tag previo). Imágenes `ghcr.io` en minúsculas con tag `sha-<commit>`.
+- ✅ **`.gitignore`** — se versionan los `package-lock.json` (CI y Docker usan `npm ci`).
+- ✅ **`docs/FASE_3_PRODUCCION.md`** (runbook: arquitectura, firewall `ufw`, observabilidad, backups con prueba mensual RTO/RPO, rollback, Cloudflare, checklist de go-live) + **`.env.production.example`** + `ALERTA360_ARQUITECTURA_MAESTRA.md` v1.2.
 
-#### Cambios Realizados:
-- ✅ **Map tile fix** — Reemplazados tiles CARTO (que ahora requieren API key) por ESRI Dark Gray Canvas (gratis, verificado HTTP 200): `https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`
-- ✅ **`tailwind.config.js`** — Paleta SerQ premium aplicada: `bg #04060b`, `txt #e9eef8`, `orange #ff5b1f/#ff8a3d`, `blue #2fa8ff`, `green #25d07d`, `red #ff4d4d`. Severidades actualizadas: critical→red, high→orange, medium→blue, low→green. Glows actualizados a la paleta SerQ.
-- ✅ **`src/index.css`** — Background con radial gradients ambientales (3 gradientes de color sobre fondo #04060b). Glassmorphism rediseñado: gradiente lineal 180° de fondo, border highlight ::before, blur 16px, back shadow 24/60px. Mapa Leaflet dark theme actualizado (#04060b). Popups con mismo estilo glass premium.
-- ✅ **`src/App.tsx`** — Background cambiado a `bg-bg` (#04060b). Añadidos 3 blobs de luz ambiental (`.ambient.a1/a2/a3`). Grid overlay opacidad reducida de 30% a 8.5%.
-- ✅ **`src/components/Map.tsx`** — Colores de marcadores actualizados a paleta SerQ. Lucide icons reemplazando emojis en controles.
-- ✅ **`src/components/Dashboard.tsx`** — Todos los colores hex hardcoded actualizados (severity colors, stat cards, eventTypeColors). Referencias Tailwind `cyan-*` reemplazadas por equivalentes SerQ blue (#2fa8ff). Ring/focus/spinner actualizados.
-- ✅ **`src/components/Sparkline.tsx`** — Tooltip/donut background colors, title/body colors actualizados a paleta SerQ.
-
-#### Estado:
-- ✅ Type-check: 0 errores
-- ✅ Dev server: HTTP 200 (tiles ESRI verificados HTTP 200, image/jpeg)
-- ✅ Commit 7adeb82 pushado a GitHub
-
-### **2026-10-17 — Alerta360 UI Redesign Integration**
-#### Cambios Realizados:
-- ✅ **`alerta360-ui-redesign/`** — Paquete completo de rediseño aplicado al proyecto: paleta cooler (#0b131d bg, #0d1621 surface, #16212e surfaceElev), panel/card system con gradientes CSS, glassmorphism rediseñado, layout responsive (mobile-first).
-- ✅ **`src/index.css`** — Background radial gradient cyan/purple (#0b131d → #0d1621). Leaflet tile tint filter (`brightness(0.66) saturate(0.5) hue-rotate(178deg)`). Panel/card sistema CSS con gradientes.
-- ✅ **`src/App.tsx`** — Background #0b131d, layout responsive (`lg:flex-row`), `EventDetailCard` flotante, error toast auto-hide 9s, modo demo con fallback `DEMO_EVENTS`.
-- ✅ **`src/components/Map.tsx`** — Marcadores HUD CSS (`.a360-marker`, `.a360-halo`, `.a360-ring`, `.a360-dot` con animación pulso). Controles Lucide (Plus/Minus/Compass). Retículo central. ESRI Dark Gray Canvas con `server.arcgisonline.com` (HTTP 200 verificado).
-- ✅ **`src/components/Dashboard.tsx`** — Layout compacto, busqueda local, KPI cards, donut chart con total overlay, sección filtros colapsable. Constante SEVERITY con colores sky/amber/orange/red (#38bdf8/#fbbf24/#fb923c/#f87171).
-- ✅ **`src/components/Header.tsx`** — Reloj en vivo, IconButton component, badge de notificaciones, badge demo.
-- ✅ **`src/components/EventDetailCard.tsx`** — Nuevo componente: card flotante con animación spring, detalles de evento (coords, severidad, fuente, timestamp).
-- ✅ **`src/components/Sparkline.tsx`** — Gradient fill, Legend registration, tooltip compacto.
-- ✅ **`src/types/index.ts`** — Tipo `DisasterEvent.intensity` y `DisasterType.hurricane` verificados.
-- ✅ **`vite.config.ts`** — Añadido `allowedHosts: true`.
-
-### **2026-10-17 — Map3D Component Integration**
-#### Cambios Realizados:
-- ✅ Instalado `maplibre-gl` (dependencia abierta, sin API key).
-- ✅ `Map3D.tsx` movido de raíz a `src/components/` (fix import path `../types`).
-- ✅ Import corregido: `import maplibregl from` → `import * as maplibregl from` (ESM sin default export).
-- ✅ Removida opción `antialias: true` (no existe en tipos de maplibre-gl v5.4).
-- ✅ CSS marcadores HUD (`.a360-gl-marker`, `.a360-gl-halo`, `.a360-gl-dot`) añadido a `src/index.css`.
-- ✅ Toggle 2D/3D añadido a `src/App.tsx` (botones 2D/3D en corner superior-derecho del mapa).
-- ✅ Fuente satélite: `server.arcgisonline.com/ArcGIS/rest/services/World_Imagery` (HTTP 200 verificado, image/jpeg 13.9KB).
-- ✅ Fuente terreno: AWS Terrain Tiles `s3.amazonaws.com/elevation-tiles-prod/terrarium` (HTTP 200 verificado, image/png 76.5KB).
-- ✅ Proyección globo (`setProjection({ type: 'globe' })`), terreno 3D (DEM terrarium, exaggeration 1.25x), cielo/fog rendering.
+#### Cambios Realizados (Fase 4 — motor de alertas):
+- ✅ **`backend/src/app.ts`** (nuevo) — `buildApp()` separado de `listen()`, testeable con `app.inject()` y Prisma inyectado.
+- ✅ **`backend/src/services/matching.ts`** (nuevo) — 5 reglas: evento activo y con coordenadas reales, tipo seguido, severidad ≥ `minSeverity`, dentro del radio (elige la ubicación más cercana) y canal habilitado (SMS solo desde `high`). Dedup por `@@unique(userId, eventId, channel)` con `createMany({ skipDuplicates: true })`.
+- ✅ **`backend/src/realtime/hub.ts`** + **`ws.ts`** (nuevo) — `AlertHub` (usuario → sockets), `WS /ws/alerts?token=<jwt>`, cierre 1008 sin token.
+- ✅ **`backend/src/routes/notifications.ts`** + **`preferences.ts`** (nuevo) — bandeja (listar, contador, marcar leída, marcar todas, borrar) y preferencias (radio, tipos, `minSeverity`, canales) con Zod.
+- ✅ **`backend/src/utils/geo.ts`** (nuevo) — Haversine, ranking de severidad, descarte de `0,0`.
+- ✅ **`backend/src/middleware/errorHandler.ts`** — **bug crítico:** `asyncHandler` no devolvía la promesa y, usado como `preHandler`, **colgaba todas las rutas autenticadas** (`/api/locations`, `/api/auth/me`). Ahora hace `return await fn(...)`.
+- ✅ **CORS** — `CORS_ORIGIN` admite lista separada por comas; en dev se permite cualquier `localhost` / `127.0.0.1` / IP LAN; preflight cacheado 24 h. El frontend usa rutas relativas `/api` y `/ws` (proxy de Vite en dev, nginx en prod).
+- ✅ **`backend/src/index.ts`** — `startIngestScheduler` con `onEventCreated → matchEvent(hub)`.
+- ✅ **UI** — `src/hooks/useAlerts.ts` (sondeo cada 30 s + WebSocket con reconexión), `src/components/NotificationsPanel.tsx` (agrupa por evento, canales, distancia, no leídas) y campana con badge real.
+- ✅ **Métricas** — `notifications_created_total{channel}`, `matching_runs_total`, `matching_matches_total`, `matching_duration_seconds`, `ws_connections`.
+- ✅ **Tests** (nuevo, `vitest.config.ts`) — `geo.test.ts`, `matching.test.ts`, `routes.test.ts`.
+- ✅ **`docs/fase4/MOTOR_ALERTAS.md`** + captura `docs/redesign/notificaciones.png`.
 
 #### Estado:
-- ✅ Type-check: 0 errores (tsc --noEmit --skipLibCheck)
-
-### **2026-10-18 — Fase 3: integración completa y verificación final**
-#### Cambios Realizados:
-- ✅ `alerta360-produccion-alertas` analizada (29 archivos) y todos aplicados al proyecto principal.
-- ✅ `.github/workflows/deploy.yml` (nuevo) — Pipeline CI/CD completo (262 líneas): build-and-push a ghcr.io + deploy vía rsync + health check público con rollback automático.
-- ✅ `backend/package-lock.json` + `package-lock.json` (lockfiles con `prom-client`).
-- ✅ `prom-client @15.1.3` instalado en backend.
-- ✅ `monitoring/` completo: alerts.yml (8 reglas), alertmanager.yml, prometheus.yml, grafana dashboard + provisioning.
-- ✅ `docker-compose.prod.yml`: 10 servicios con healthchecks.
-- ✅ `nginx.conf`: TLS, HSTS, CSP, rate limiting, `/status`, `/metrics` bloqueado externo.
-- ✅ `public/status.html` (nuevo), `scripts/init-letsencrypt.sh` (nuevo).
-- ✅ `docs/FASE_3_PRODUCCION.md` (runbook), `.env.production.example`.
-- ✅ `backend/Dockerfile` multi-stage, `ALERTA360_ARQUITECTURA_MAESTRA.md` v1.2.
-- ✅ Limpieza: borradas carpetas `alerta360-fase3`, `alerta360-fase3 (1)` y `alerta360-ui-redesign (1)`.
-
-#### Estado:
-- ✅ TypeScript backend: 0 errores
-- ✅ Frontend build: OK (2.453 módulos, `status.html` en dist)
-- ✅ `/metrics` y `/health` probados localmente
-- ✅ YAML/JSON validados
-- ✅ Scripts ejecutables (`chmod +x`)
-- ⏳ Externo: proveedor cloud, DNS, certificado TLS real, despliegue
-
-### **2026-10-18 — Fase 4: motor de alertas + fix crítico asyncHandler**
-#### Cambios Realizados:
-- ✅ **`backend/src/app.ts`** (nuevo, 154 líneas) — Refactor: `buildApp()` separa lógica de arranque de `listen()`. Testeable con `app.inject()` + Prisma falso. CORS mejorado (localhost/127.0.0.1/LAN IPs en dev, 24h preflight cache). Registra 5 rutas + WebSocket + health + métricas.
-- ✅ **`backend/src/services/matching.ts`** (nuevo, 290 líneas) — Motor de alertas con 5 reglas: (1) evento activo + no null-island, (2) tipo en `disasterTypes`, (3) severidad ≥ `minSeverity`, (4) ubicación dentro del radio, (5) canal habilitado (SMS solo high+). Dedupe vía `createMany({ skipDuplicates: true })`. Push en vivo vía WebSocket.
-- ✅ **`backend/src/realtime/hub.ts`** + **`ws.ts`** (nuevo) — `AlertHub` (Map usuario→sockets), `GET /ws/alerts?token=<jwt>` con cierre 1008 si falta token.
-- ✅ **`backend/src/routes/notifications.ts`** + **`preferences.ts`** (nuevo) — GET `/api/notifications`, POST `/read`, GET/PUT `/api/preferences`.
-- ✅ **`backend/src/utils/geo.ts`** (nuevo) — Haversine, severity ranking, null-island check.
-- ✅ **`backend/src/middleware/errorHandler.ts`** (corregido) — **Bug crítico arreglado:** `asyncHandler` ahora usa `return await fn(...)` — antes no devolvía la promesa y colgaba todas las rutas autenticadas (`/api/locations`, `/api/auth/me`).
-- ✅ **`backend/src/index.ts`** — Arranca `buildApp()` + `startIngestScheduler` con `onEventCreated → matchEvent(hub)`.
-- ✅ **`backend/test/`** (nuevo) — 37 tests: `geo.test.ts` (10), `matching.test.ts` (17), `routes.test.ts` (10). `vitest.config.ts`.
-- ✅ **`src/components/NotificationsPanel.tsx`** (nuevo) — Bandeja UI: notificaciones agrupadas por evento, canales, contador real en la campana.
-- ✅ **`src/hooks/useAlerts.ts`** (nuevo) — WebSocket hook con reconexión.
-- ✅ **`backend/plugins/metrics.ts`** — Métricas nuevas: `matchingRuns`, `matchingMatches`, `matchingDuration`, `notificationsCreated`, `wsConnections`.
-- ✅ **`docs/fase4/MOTOR_ALERTAS.md`** (nuevo) — Documentación del motor de alertas.
-- ✅ **`docs/redesign/notificaciones.png`** (nuevo) — Captura de la UI de notificaciones.
-
-#### Estado:
-| ✅ TypeScript backend: 0 errores (`tsc --noEmit --skipLibCheck`)
-| ✅ Tests: 48/48 pasando (`vitest run`)
-- ✅ Build frontend: 2.461 módulos, index 732 kB (240 kB gzip) + Map3D chunk
-
-### **2026-10-18 — Fase 3: producción lista (métricas, alertas, TLS, backups y status page)**
-#### Cambios Realizados:
-- ✅ **`backend/src/plugins/metrics.ts`** (nuevo) — Registro de Prometheus con `prom-client`: métricas de proceso con prefijo `alerta360_`, histograma y contador HTTP por método/ruta/estado, y gauges de ingesta (última correcta, duración del ciclo, eventos activos, errores por fuente).
-- ✅ **`backend/src/index.ts`** — `GET /metrics`; `/health` enriquecido (base de datos con latencia, frescura de la ingesta, uptime y versión) que responde **503** si PostgreSQL falla; apagado ordenado con SIGTERM/SIGINT para que Docker no corte peticiones.
-- ✅ **`backend/src/services/ingestion.ts`** — Instrumentación de cada ciclo: eventos nuevos por fuente, errores, duración y marca de última ingesta correcta.
-- ✅ **`monitoring/alerts.yml`** (nuevo) — 8 reglas: API caída, 5xx >5 %, p95 >1 s, ingesta parada >15 min, 3 h sin eventos, errores de inserción, memoria >512 MB y pico de tráfico.
-- ✅ **`monitoring/alertmanager.yml`** (nuevo) — Enrutado a webhook (`ALERT_WEBHOOK_URL`) con inhibición cuando el backend está caído.
-- ✅ **`monitoring/grafana/`** (nuevo) — Datasource y dashboard provisionados: 6 stats y 5 series (estado, latencia p50/p95/p99, peticiones, errores, eventos ingestados, memoria/CPU).
-- ✅ **`docker-compose.prod.yml`** — 10 servicios con healthchecks, límites de logs y puertos de observabilidad solo en `127.0.0.1`: backend (build multi-stage), nginx, certbot (renovación cada 12 h), prometheus, alertmanager, grafana, node-exporter, postgres-exporter y backup diario.
-- ✅ **`nginx.conf`** — TLS 1.2/1.3, HSTS, CSP, `Permissions-Policy`, cache inmutable de `/assets`, ruta `/status`, ACME challenge en HTTP, bloqueo externo de `/metrics` y gzip ampliado.
-- ✅ **`public/status.html`** (nuevo) — Página de estado pública: consulta `/health` cada 30 s y muestra API, base de datos, última ingesta y uptime.
-- ✅ **`backend/Dockerfile`** — Build multi-stage (`dist` + dependencias de producción), usuario `node` y `HEALTHCHECK`.
-- ✅ **`scripts/`** — `backup.sh` (contenedor u host, retención configurable, S3 opcional), `deploy.sh` (pull de imagen, `db push`, health check con reintentos y traza de rollback) e `init-letsencrypt.sh` (certificado temporal + emisión real).
-- ✅ **`docs/FASE_3_PRODUCCION.md`** (nuevo) — Runbook: arquitectura, servidor, puesta en marcha, observabilidad, backups, rollback y checklist de go-live.
-- ✅ **`.env.production.example`** (nuevo) — Variables de producción documentadas.
-
-#### Estado:
-- ✅ Type-check y build del backend: 0 errores
-- ✅ Build del frontend: OK (incluye `status.html` en `dist`)
-- ✅ `/metrics` y `/health` probados en local: métricas expuestas y 503 correcto sin base de datos
-- ✅ Sintaxis validada: YAML de compose/Prometheus/Alertmanager/Grafana, JSON del dashboard y los tres scripts
-- ⏳ Externo: proveedor cloud, DNS, emisión del certificado real y despliegue
-
-### **2026-10-18 — Fase 3: CD real, `real_ip` de Cloudflare y runbook ampliado**
-#### Cambios Realizados:
-- ✅ **`.github/workflows/deploy.yml`** — Reescrito: compila el `dist/` en CI y lo sube por `rsync` con swap atómico (antes el job SSH **no desplegaba el frontend**), usa `docker compose` v2, arranca la BD y espera `pg_isready`, aplica `prisma db push`, valida `nginx -t`, recarga nginx, comprueba `/health` en local y en público, guarda `.current_tag` y **revierte solo** (dist anterior + tag previo) si algo falla. Imágenes con nombre en minúsculas y tag `sha-<commit>`.
-- ✅ **`.gitignore`** — Se versionan los `package-lock.json`: CI y el `Dockerfile` usan `npm ci` y el build fallaba en un clon limpio.
-- ✅ **`nginx.conf`** — Bloque `real_ip` de Cloudflare (22 rangos) listo para descomentar; `/assets` con una sola cabecera `Cache-Control` y las cabeceras de seguridad heredadas.
-- ✅ **`scripts/deploy.sh`** — Levanta la BD antes del `db push` (el primer despliegue fallaba con `--no-deps`) y registra `.current_tag` para el rollback del pipeline.
-- ✅ **`docs/FASE_3_PRODUCCION.md`** — Firewall (`ufw`), prueba de restauración mensual con RTO/RPO, despliegue continuo y nueva sección de Cloudflare (orden de activación, caché y renovación).
-
-#### Estado:
-- ✅ `nginx -t` con y sin el bloque de Cloudflare y prueba real con nginx 1.26: 301 en `:80`, `/status` 200, `/metrics` 404, proxy de `/api`, ACME 200, rate limit 429 tras la ráfaga y HSTS/CSP presentes
-- ✅ YAML del workflow validado y `bash -n` de los tres scripts
-- ✅ Parche verificado con `git apply --check` sobre `160b2fa`
-- ⏳ Externo: servidor, DNS, certificado y secretos `PROD_*`
-
-### **2026-10-18 — Motor de alertas, notificaciones en vivo y arreglo de CORS**
-#### Cambios Realizados:
-- ✅ **`backend/src/services/matching.ts`** (nuevo) — Motor de alertas con 5 reglas: evento activo y con coordenadas reales, tipo seguido, severidad mínima, ubicación dentro del radio y algún canal habilitado. Elige la ubicación más cercana, envía SMS solo desde `high` y deduplica por `@@unique(userId, eventId, channel)`.
-- ✅ **`backend/src/utils/geo.ts`** (nuevo) — Haversine, rangos de severidad y descarte de la coordenada `0,0` (fuentes sin geocodificar).
-- ✅ **`backend/src/realtime/`** (nuevo) — Hub de WebSockets por usuario y ruta `WS /ws/alerts?token=`; la alerta se empuja en vivo y la notificación queda en `sent` si el socket estaba abierto.
-- ✅ **`backend/src/routes/notifications.ts` / `preferences.ts`** (nuevos) — Bandeja (listar, contador, marcar leída, marcar todas, borrar) y preferencias (radio, tipos, `minSeverity`, canales) validadas con Zod.
-- ✅ **`backend/src/app.ts`** (nuevo) — `buildApp()` separado del arranque para poder testear con `app.inject()` y un Prisma inyectado; `index.ts` queda como punto de entrada.
-- ✅ **`backend/src/middleware/errorHandler.ts`** — `asyncHandler` no devolvía la promesa: usado como `preHandler` **colgaba todas las rutas autenticadas**. Corregido.
-- ✅ **CORS** — `CORS_ORIGIN` acepta una lista separada por comas; en desarrollo se permite cualquier `localhost`/`127.0.0.1`/IP local con cualquier puerto; el preflight se cachea 24 h. El frontend pasa a rutas relativas `/api` y `/ws` con proxy de Vite (nginx en producción), así que el CORS deja de estar en el camino.
-- ✅ **UI** — `useAlerts` (sondeo cada 30 s + WebSocket con reconexión), `NotificationsPanel` (agrupa por evento, canales, distancia y no leídas) y campana con badge real en el header.
-- ✅ **Tests** — 37 pruebas con Vitest: geo, reglas de matching (incluye deduplicación y caída de la BD) y API de notificaciones/preferencias con Prisma falso.
-- ✅ **Métricas** — `alerta360_notifications_created_total{channel}`, `matching_runs_total`, `matching_matches_total`, `matching_duration_seconds` y `ws_connections`.
-- ✅ **`docs/fase4/MOTOR_ALERTAS.md`** (nuevo) — Reglas, API, WebSocket, métricas, CORS y limitaciones conocidas.
-
-#### Estado:
-- ✅ Backend: `tsc` limpio, build OK, 37/37 tests
-- ✅ E2E con PostgreSQL 17 real: usuario en Bogotá → 3 notificaciones (push/email/sms) y alerta por WebSocket; el usuario de Medellín no recibe nada
-- ✅ CORS verificado en desarrollo y producción (lista con y sin `www`; orígenes ajenos bloqueados)
-| ✅ Frontend: `tsc` limpio, build de 2.461 módulos; captura en `docs/redesign/notificaciones.png`
-| ✅ Entrega real de email (SendGrid) y SMS (Twilio) — implementada 2026-10-18
-
-## — 2026-10-18 — Fase 1 completada: SendGrid, Twilio y Swagger
-#### Cambios Realizados:
-- ✅ **`backend/src/services/notifications/`** (nuevo) — Sistema de entrega de notificaciones:
-  - `dispatch.ts` — Orquestador: busca notificaciones `pending` de canales email/sms, envía al proveedor y actualiza estado (`sent`/`failed`/`skipped`). Fire-and-forget desde el motor de matching (no bloquea la ingesta). Inyección de dependencias para tests (`DispatchDeps`).
-  - `email.ts` — Envío vía SendGrid REST API v3 (`/v3/mail/send`) con `axios`. Devuelve `{ status: 'skipped' }` si `SENDGRID_API_KEY` no está configurada.
-  - `sms.ts` — Envío vía Twilio REST API (`/Messages.json`) con `axios`. Valida formato E.164 (`+573****4567`).
-- ✅ **`backend/src/routes/docs.ts`** + **`backend/src/docs/openapi.ts`** (nuevo) — Documentación Swagger/OpenAPI 3.0 estática: UI en `/docs`, spec en `/openapi.json`. Desactivable con `DOCS_ENABLED=false`.
-- ✅ **`backend/src/plugins/metrics.ts`** — Nueva métrica `notificationsDelivered{channel, status}` (entregas a proveedores externos).
-- ✅ **`backend/src/utils/config.ts`** — Variables nuevas: `SENDGRID_API_KEY`, `EMAIL_FROM`, `SENDGRID_BASE_URL`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, `TWILIO_BASE_URL`, `DOCS_ENABLED`. Defaults vacíos — el motor sigue funcionando sin configuración.
-- ✅ **`backend/src/routes/preferences.ts`** — `PUT /api/preferences` ahora gestiona el campo `phone` del User model (E.164), separado del `UserPreference`. GET lo incluye en la respuesta.
-- ✅ **`backend/prisma/schema.prisma`** — `User.phone String?` (E.164 para SMS), `Notification.error String?` (motivo del fallo del proveedor), `status` incluye `skipped`.
-- ✅ **`backend/package.json`** — `@fastify/swagger@^8.15.0` + `@fastify/swagger-ui@^2.1.0` (compatibles con Fastify 4). Elimina `@sendgrid/mail` y `twilio` (usan `axios` directo).
-- ✅ **Tests** — `dispatch.test.ts` (7 pruebas) y `docs.test.ts` (3 pruebas). Total: **48/48 pruebas pasando**.
-
-#### Estado:
-- ✅ TypeScript: 0 errores (`tsc --noEmit`)
-- ✅ Tests: 48/48 pasando (geo: 10, matching: 17, routes: 10, dispatch: 7, docs: 3+1)
-- ✅ Build backend: OK
-- ✅ Build frontend: 2.461 módulos, `status.html` incluido
-
-### **2026-10-18 — Mapa v2: calor, edificios 3D, clusters navegables y línea de tiempo**
-#### Cambios Realizados:
-- ✅ **`src/components/Map.tsx`** — Reescrito: `BASEMAPS` conmutables (Oscuro · Satélite · Terreno · Relieve, todos sobre Esri y sin API key), `HeatLayer` (`leaflet.heat`, gradiente azul → rojo), `ClusterLayer` (celdas de 56 px + fusión de grupos a <40 px; clic → `fitBounds` a la zona), `EventConnections`, panel de capas de 224 px y atribución que se eleva cuando la barra de tiempo está visible.
-- ✅ **`src/components/Map3D.tsx`** — Globo (MapLibre 4.7.1) + terreno AWS (exaggeration 1.25) + satélite Esri; edificios `fill-extrusion` de OpenFreeMap a zoom ≥13, con vuelo a la ciudad al activarlos; topónimos Noto Sans; heatmap nativo con radio 26→74 px e intensidad 1.6→3.0; clusters con halo/disco/contador y clic con `easeTo` (más respaldo heurístico si `getClusterExpansionZoom` no responde); `ResizeObserver`.
-- ✅ **`src/App.tsx`** — Estado `timeline` (`enabled` / `hoursAgo` / `playing`), reproducción en pasos de 15 min cada 110 ms y filtrado por ventana `[ahora − 24 h, ahora − hoursAgo]`; el calor, los clusters y los contadores del panel acompañan la reproducción.
-- ✅ **`src/index.css`** — Filtros por `data-basemap`, estilos de MapLibre, marcadores HUD (`.a360-gl-*`, `.a360-bubble`), fondo de estrellas y offset de atribuciones con `data-timeline`.
-- ✅ **`src/data/demoEvents.ts`** — 178 eventos deterministas repartidos en las últimas 24 h reales (0 críticos · 4 altos · 174 bajos) para que la línea de tiempo muestre actividad.
-- ✅ **`src/types/leaflet-heat.d.ts`** — Tipos para `leaflet.heat`.
-- ✅ **`package.json`** — `maplibre-gl ^4.7.1` (la 6.x no arranca el worker en Vite dev) y `leaflet.heat ^0.2.0`.
-- ✅ **`docs/redesign/MAPA.md`** — Documentación de capas, calor, edificios, clusters y línea de tiempo, con capturas.
-
-#### Estado:
-- ✅ Type-check: 0 errores (`tsc --noEmit`)
-- ✅ Build: 2.461 módulos; `index` 732 kB (240 kB gzip) + `Map3D` 812 kB (221 kB gzip) en chunk aparte
-- ✅ Dev server: HTTP 200 en `:5173`
-- ✅ Teselas verificadas: 6 URLs Esri, AWS Terrain y OpenFreeMap
-- ✅ Merge a `main` (`160b2fa`) y rama `ui/redesign-v2` publicada
-
-#### Pendiente:
-- ⏳ Borrar `alerta360-ui-redesign (1)/` (copia de referencia de 9 archivos que la app no usa) y el bloque `watch.ignored` de `vite.config.ts` que existe solo para esa carpeta.
-- ⏳ Motor de alertas (matching evento → usuarios) y notificaciones push/email.
-
-
-#### Cambios Realizados (Frontend):
-- ✅ `src/components/Sparkline.tsx` (nuevo) — Componentes Chart.js: `Sparkline` (línea con gradiente semi-transparente, tension 0.4) y `DonutChart` (donut con cortina 65%, tooltips dark theme). Registra LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, ArcElement
-- ✅ `src/components/Dashboard.tsx` — Premium UI overhaul:
-  - **Chart.js sparklines** reemplazan SVGs estáticos en stat cards (gráficos de línea con fill gradient + tension)
-  - **Donut chart** de distribución por tipo de evento (labels, colores por severidad, tooltips glass-dark)
-  - **Lucide React icons** reemplazan todos los emoji (Search, Filter, Clock, AlertTriangle, Zap, Thermometer, Wind)
-  - **Framer Motion**: motion.button con whileHover/whileTap, AnimatePresence para detalle de evento, layoutId para transiciones fluidas, staggered animations en lista de eventos
-  - Buscador con Search icon y focus ring cyan
-  - Time range selector con select estilizado glass-dark
-  - Event cards con severity progress bar, estilo de frontera por severidad, efectos de hover
-  - Live clock en footer (actualiza cada 30s)
-- ✅ `src/components/Header.tsx` — Premium header:
-  - **Lucide icons** reemplazan todos los emoji (Search, Bell, Settings, LogOut, User)
-  - **Framer Motion**: motion.header con entrance animation, motion.button con micro-interacciones (whileHover scale, whileTap), icon scale en hover
-  - Reloj vivo con separador de fecha/hora
-  - Badge de notificaciones (12) con red dot
-  - User profile avatar con gradiente
-- ✅ `src/components/Map.tsx` — Mapa premium:
-  - **Lucide icons** en controles (Search, Target) reemplazan emoji (🔍, 🎯)
-  - **Framer Motion** en botones de control (whileHover scale 1.08, whileTap scale 0.95)
-
-#### Dependencias agregadas:
-- `chart.js@4.5.1` + `react-chartjs-2@5.3.1` — Gráficos profesionales
-- `framer-motion@14.3.0` — Micro-interacciones y animaciones fluidas
-- `lucide-react@1.59.0` — Iconografía lineal minimalista
-
-#### Estado:
-- ✅ Type-check: 0 errores
-- ✅ Build: 2453 modules, 693.76 kB (226.87 kB gzipped)
-- ✅ Dev server: HTTP 200 en http://localhost:5173
-- ✅ Commit 67810a9 pushado a GitHub
-
----
-- ✅ `backend/src/routes/auth.ts` (nuevo) — Rutas de autenticación: POST /auth/register, POST /auth/login, GET /auth/me. JWT + bcrypt + Zod validation
-- ✅ `backend/src/routes/events.ts` (nuevo) — GET /api/events (con filtros types/timeRange), GET /api/events/:id. Sirve eventos desde la base de datos
-- ✅ `backend/src/routes/locations.ts` (nuevo) — CRUD completo: GET /locations, POST /locations, DELETE /locations/:id. Auth JWT requerido
-- ✅ `backend/src/services/ingestion.ts` (nuevo) — Servicio de ingestión: USGS earthquakes (feed geojson all_day), NOAA flood warnings (API alerts/active). Scheduler cada 5 minutos. Deduplicación via externalId
-- ✅ `backend/src/index.ts` — Actualizado: registra 3 route modules (auth, events, locations), JWT plugin, servidor escucha en puerto 3000
-- ✅ `backend/.env` (nuevo) — DATABASE_URL con credentials de PostgreSQL local
-- ✅ `prisma db push` — Schema sincronizado a PostgreSQL. 6 tablas creadas (User, UserPreference, Location, DisasterEvent, Notification, AuditLog)
-- ✅ PostgreSQL corriendo en Docker (container `alerta360-db`, puerto 5432)
-- ✅ Verificado: ingestión funciona — eventos reales de USGS (terremotos) y NOAA (flood warnings) aparecen en /api/events
-
-#### Cambios Realizados (Frontend Premium):
-- ✅ `tailwind.config.js` — Tema dark premium: colores neon por severidad (severity.low/medium/high/critical), glassmorphism, animaciones (pulse, fade-in, stagger), background grid
-- ✅ `src/index.css` — Tema oscuro radial (surface → surfaceElev), utilidades `.glass` / `.glass-dark` / `.glass-light`, scrollbars personalizadas, overrides Leaflet dark theme, keyframes para animaciones
-- ✅ `src/App.tsx` — Rediseñado: auth state (login modal automático), layout glass-dark con gap, grid background, toast de error premium
-- ✅ `src/components/AuthModal.tsx` (nuevo) — Modal overlay con login/register, campos con glassmorphism, validación, auto-guardado de token JWT en localStorage
-- ✅ `src/components/Header.tsx` — Rediseñado: logo con gradiente neon (cyan→purple→cyan), reloj en vivo, botones de navegación glass-dark, menú de usuario con status
-- ✅ `src/components/Dashboard.tsx` — Rediseñado con:
-  - **Tarjeta de alerta crítica urgente** (top): card prominente con timer, icono de alerta, botón "Ver detalle"
-  - **Stat cards con sparklines**: SVGs mini-graficos de tendencia, progress bars, colores por severidad
-  - **Event cards premium**: severity progress bar, badge de tiempo transcurrido (monospace), pulse animation, glass-dark borders, hover lift
-  - **Live clock** en footer (actualiza cada 30s)
-  - **Staggered animations** en toda la lista
-- ✅ `src/components/Map.tsx` — Rediseñado con:
-  - **Tiles oscuros CARTO dark_all** (tema premium para centros de mando)
-  - **Marcadores animados**: neon glow por severidad, pulse animation en critical/high
-  - **Líneas de conexión**: polylines entre eventos del mismo tipo cercanos (5-500km)
-  - **Crosshair central**: reticle de apuntado en el centro del mapa
-  - **Controles personalizados**: zoom +, zoom -, fit-to-bounds, reset view
-  - **Popups glassmórficos**: dark theme, blur, información premium
-  - **Auto-fit bounds** al cargar eventos
-
-#### Cambios Realizados (API Client):
-- ✅ `src/services/api.ts` — Reescrito:
-  - JWT token persistence (localStorage + axios defaults)
-  - `register()`, `login()`, `logout()`, `getMe()` — auth completo
-  - `fetchDisasterEvents()`, `fetchEventById()` — sin mock data fallback
-  - `fetchLocations()`, `createLocation()`, `deleteLocation()` — CRUD locations
-  - `subscribeToAlerts()` — suscripción a notificaciones
-  - `setAuthToken()` — helper para auth header
-
-#### Estado:
-- ✅ Type-check: 0 errores (backend + frontend)
-- ✅ Build: 133 módulos transformados, 376 kB (116.84 kB gzipped)
-- ✅ Backend: corriendo en http://localhost:3000 (health check, events reales, auth JWT)
-- ✅ Frontend: corriendo en http://localhost:5173 (proxy Vite → backend)
-- ✅ Dev server: HTTP 200
+- ✅ TSC backend y frontend: 0 errores · build frontend 2.461 módulos (`index` 732 kB / 240 kB gzip + chunk `Map3D`)
+- ✅ Tests: 37 (3 archivos)
+- ✅ `/metrics` y `/health` probados en local (503 correcto sin BD); YAML de compose/Prometheus/Alertmanager/Grafana y JSON del dashboard validados; `bash -n` de los tres scripts
+- ✅ `nginx -t` con y sin el bloque de Cloudflare + prueba real con nginx 1.26: 301 en `:80`, `/status` 200, `/metrics` 404, proxy `/api`, ACME 200, rate limit 429 y HSTS/CSP presentes
+- ✅ E2E con PostgreSQL 17 real: usuario en Bogotá → 3 notificaciones (push/email/sms) + alerta por WS; el usuario de Medellín no recibe nada
+- ✅ CORS verificado en dev y prod (con y sin `www`; orígenes ajenos bloqueados)
+- ⏳ Externo: servidor, DNS, certificado TLS real y secretos `PROD_*`
 
 ---
 
-### **2026-10-17 — Backend Best Practices (nodebestpractices aplicadas)**
-
-#### Cambios Realizados (Backend Refactor):
-- ✅ `src/utils/config.ts` (nuevo) — Config loader con validación Zod de env vars (PORT, JWT_SECRET, DATABASE_URL, CORS_ORIGIN, etc.). Falla fast fail si falta alguna variable crítica
-- ✅ `src/utils/logger.ts` (nuevo) — Logger Pino con pino-pretty (dev) / JSON (prod). Reemplaza todos los `console.log/error` del backend
-- ✅ `src/utils/prisma.ts` (nuevo) — Type augmentation para Fastify, declara `fastify.prisma: PrismaClient`
-- ✅ `src/middleware/errorHandler.ts` (nuevo) — Error handler centralizado (#2.4). `asyncHandler()` wrapper para que rejections en async routes sean capturados. Responses JSON consistentes con error/message/stack (dev)
-- ✅ `src/middleware/requireAuth.ts` (nuevo) — Auth middleware compartido (DRY). Antes estaba duplicado en `auth.ts` + `locations.ts`
-- ✅ `backend/src/index.ts` — Refactor: usa `config` (no process.env directo), `logger` (no console), `setupErrorHandler()`, registra `fastify.decorate('prisma', prisma)` singleton
-- ✅ `backend/src/routes/auth.ts` — Usa `fastify.prisma` (singleton), importa `requireAuth` de middleware compartido
-- ✅ `backend/src/routes/events.ts` — Elimina `new PrismaClient()` duplicado, usa `fastify.prisma`
-- ✅ `backend/src/routes/locations.ts` — Elimina `new PrismaClient()` + `requireAuth` local, usa shared middleware + `fastify.prisma`
-- ✅ `backend/src/services/ingestion.ts` — Reemplaza `console.log/error` por `logger`, usa `config` en vez de `process.env`, inyección de dependencia: `runIngestion(prisma)` y `startIngestScheduler(prisma)`
-
-#### Dependencias agregadas:
-- `pino` — Logger estructurado
-- `pino-pretty` — Pretty printing para desarrollo
-
-#### Mejoras específicas (nodebestpractices):
-1. **Error handling centralizado (#2.4)** — Un solo `setErrorHandler` para toda la app
-2. **Logging estructurado (#2.7)** — Pino con niveles (debug/info/error) y contexto
-3. **Config validation (#1.4)** — Zod valida todas las env vars al startup, fail-fast si falta JWT_SECRET o DATABASE_URL
-4. **Dependency injection** — PrismaClient singleton pasado como parámetro (no importado global)
-5. **DRY middleware** — requireAuth en un solo lugar
+### **2026-10-17 — Mapa v2: calor, edificios 3D, clusters navegables y línea de tiempo** · `5fc0429` + `ac4b0e4` + merge `160b2fa`
+#### Cambios Realizados:
+- ✅ **`src/components/Map.tsx`** — reescrito: `BASEMAPS` conmutables (Oscuro · Satélite · Terreno · Relieve, Esri sin API key), `HeatLayer` (`leaflet.heat`, gradiente azul → rojo), `ClusterLayer` (celdas de 56 px + fusión a <40 px; clic → `fitBounds`), `EventConnections`, panel de capas de 224 px y atribución que sube cuando la línea de tiempo está visible.
+- ✅ **`src/components/Map3D.tsx`** — globo (MapLibre 4.7.1) + terreno AWS (exaggeration 1.25) + satélite Esri; edificios `fill-extrusion` de OpenFreeMap a zoom ≥13; topónimos Noto Sans; heatmap nativo (radio 26→74 px, intensidad 1.6→3.0); clusters con `easeTo` (y respaldo si `getClusterExpansionZoom` no responde); `ResizeObserver`.
+- ✅ **`src/App.tsx`** — `timeline` (`enabled` / `hoursAgo` / `playing`), pasos de 15 min cada 110 ms, ventana `[ahora − 24 h, ahora − hoursAgo]`; calor, clusters y contadores siguen la reproducción.
+- ✅ **`src/index.css`** — filtros por `data-basemap`, estilos MapLibre, marcadores HUD (`.a360-gl-*`, `.a360-bubble`), fondo de estrellas, offset de atribución con `data-timeline`.
+- ✅ **`src/data/demoEvents.ts`** — 178 eventos deterministas en las últimas 24 h reales.
+- ✅ **`src/types/leaflet-heat.d.ts`** — tipos de `leaflet.heat`.
+- ✅ **`package.json`** — `maplibre-gl ^4.7.1` (la 6.x no arranca el worker en Vite dev; antes estaba en 5.4) y `leaflet.heat ^0.2.0`.
+- ✅ **`docs/redesign/MAPA.md`** — documentación con capturas.
+- ✅ `ac4b0e4` — borrado `alerta360-ui-redesign/`.
 
 #### Estado:
-- ✅ Type-check backend: 0 errores
-- ✅ Build backend: exitoso
-- ✅ Backend: corriendo en http://localhost:3000 (health check OK)
-- ✅ Commit 04e9c97 pushado a GitHub
+- ✅ TSC 0 · build 2.461 módulos; `index` 732 kB (240 kB gzip) + `Map3D` 812 kB (221 kB gzip)
+- ✅ Teselas verificadas: 6 URLs de Esri, AWS Terrain y OpenFreeMap
+- ✅ Merge a `main` (`160b2fa`); rama `ui/redesign-v2` publicada
+- ⏳ Queda en `vite.config.ts` el `watch.ignored: ['**/alerta360-ui-redesign/**']`, que ya no hace falta.
+
+### **2026-10-17 — UI Redesign + Map3D (MapLibre: globo, terreno, satélite)** · `1971a4b`
+#### Cambios Realizados (rediseño):
+- ✅ Paquete `alerta360-ui-redesign/` aplicado: paleta más fría (#0b131d bg, #0d1621 surface, #16212e surfaceElev), sistema panel/card con gradientes, layout responsive mobile-first.
+- ✅ **`src/index.css`** — gradiente radial cian/púrpura, filtro de tinte para teselas Leaflet, sistema panel/card.
+- ✅ **`src/App.tsx`** — layout `lg:flex-row`, `EventDetailCard` flotante, toast de error que se oculta a los 9 s, modo demo con fallback `DEMO_EVENTS`.
+- ✅ **`src/components/Map.tsx`** — marcadores HUD CSS (`.a360-marker/halo/ring/dot` con pulso), controles Lucide, retícula central, ESRI Dark Gray Canvas.
+- ✅ **`src/components/Dashboard.tsx`** — layout compacto, búsqueda local, KPI cards, donut con total superpuesto, filtros colapsables.
+- ✅ **`src/components/Header.tsx`** — reloj en vivo, `IconButton`, badges de notificaciones y demo.
+- ✅ **`src/components/EventDetailCard.tsx`** (nuevo) — card flotante con animación spring.
+- ✅ **`src/components/Sparkline.tsx`** — relleno con gradiente, leyenda, tooltip compacto.
+- ✅ **`vite.config.ts`** — `allowedHosts: true`.
+
+#### Cambios Realizados (Map3D):
+- ✅ `maplibre-gl` instalado (sin API key); `Map3D.tsx` movido a `src/components/`; import `import * as maplibregl`; quitado `antialias: true` (no existe en los tipos).
+- ✅ Toggle 2D/3D en `src/App.tsx`; CSS `.a360-gl-*`.
+- ✅ Satélite Esri `World_Imagery` y terreno AWS `terrarium` (HTTP 200 verificados); proyección globo, DEM ×1.25, cielo/niebla.
+
+#### Estado:
+- ✅ TSC 0 (`--skipLibCheck`)
+
+### **2026-10-17 — Paleta SerQ + fix de teselas del mapa** · `7adeb82`
+#### Cambios Realizados:
+- ✅ **Teselas** — CARTO (ahora exige API key) reemplazado por ESRI Dark Gray Canvas (gratis, HTTP 200).
+- ✅ **`tailwind.config.js`** — paleta SerQ: `bg #04060b`, `txt #e9eef8`, `orange #ff5b1f/#ff8a3d`, `blue #2fa8ff`, `green #25d07d`, `red #ff4d4d`. Severidades: critical→red, high→orange, medium→blue, low→green.
+- ✅ **`src/index.css`** — 3 gradientes ambientales sobre #04060b; glassmorphism rediseñado (gradiente 180°, borde `::before`, blur 16 px); Leaflet y popups con el mismo estilo.
+- ✅ **`src/App.tsx`** — fondo `bg-bg`, 3 blobs ambientales (`.ambient.a1/a2/a3`), grid al 8,5 %.
+- ✅ **`Map.tsx`**, **`Dashboard.tsx`**, **`Sparkline.tsx`** — colores hex y `cyan-*` migrados a la paleta SerQ; iconos Lucide.
+
+#### Estado:
+- ✅ TSC 0 · dev server HTTP 200 · teselas ESRI verificadas
+
+### **2026-10-17 — Backend: buenas prácticas (nodebestpractices)** · `04e9c97`
+#### Cambios Realizados:
+- ✅ **`backend/src/utils/config.ts`** (nuevo) — validación Zod de las variables de entorno; fail-fast si faltan `JWT_SECRET` o `DATABASE_URL`.
+- ✅ **`backend/src/utils/logger.ts`** (nuevo) — Pino (`pino-pretty` en dev, JSON en prod); reemplaza todos los `console.*`.
+- ✅ **`backend/src/utils/prisma.ts`** (nuevo) — augmentation `fastify.prisma: PrismaClient`.
+- ✅ **`backend/src/middleware/errorHandler.ts`** (nuevo) — handler centralizado + `asyncHandler()`.
+- ✅ **`backend/src/middleware/requireAuth.ts`** (nuevo) — antes estaba duplicado en `auth.ts` y `locations.ts`.
+- ✅ **`backend/src/index.ts`** y rutas — usan `config`, `logger`, `setupErrorHandler()` y el singleton `fastify.prisma` (se eliminan los `new PrismaClient()` duplicados).
+- ✅ **`backend/src/services/ingestion.ts`** — `logger` + `config`; inyección `runIngestion(prisma)` / `startIngestScheduler(prisma)`.
+- Dependencias: `pino`, `pino-pretty`.
+
+#### Estado:
+- ✅ TSC 0 · build OK · backend en http://localhost:3000 (health OK)
+
+### **2026-10-17 — UI premium: Chart.js, Lucide y Framer Motion** · `67810a9`
+#### Cambios Realizados:
+- ✅ **`src/components/Sparkline.tsx`** (nuevo) — `Sparkline` (línea con gradiente, tension 0.4) y `DonutChart` (cutout 65 %).
+- ✅ **`src/components/Dashboard.tsx`** — sparklines Chart.js en las stat cards, donut por tipo de evento, iconos Lucide (adiós emojis), Framer Motion (`whileHover`/`whileTap`, `AnimatePresence`, `layoutId`, animaciones escalonadas), buscador, selector de rango, cards con barra de severidad, reloj en el footer.
+- ✅ **`src/components/Header.tsx`** — iconos Lucide, entrada animada, micro-interacciones, reloj, badge de notificaciones, avatar con gradiente.
+- ✅ **`src/components/Map.tsx`** — controles con Lucide + Framer Motion.
+- Dependencias: `chart.js@4.5.1`, `react-chartjs-2@5.3.1`, `framer-motion@14.3.0`, `lucide-react@1.59.0`.
+
+#### Estado:
+- ✅ TSC 0 · build 2.453 módulos, 693,76 kB (226,87 kB gzip)
+
+### **2026-10-16 — Backend real (auth, eventos, ubicaciones, ingesta USGS/NOAA) + frontend premium** · `2ed3a61` + `9ed6599`
+#### Cambios Realizados (backend):
+- ✅ **`backend/src/routes/auth.ts`** — `POST /auth/register`, `POST /auth/login`, `GET /auth/me` (JWT + bcrypt + Zod).
+- ✅ **`backend/src/routes/events.ts`** — `GET /api/events` (filtros `types` / `timeRange`) y `GET /api/events/:id`.
+- ✅ **`backend/src/routes/locations.ts`** — CRUD con JWT.
+- ✅ **`backend/src/services/ingestion.ts`** — USGS (feed geojson `all_day`) + NOAA (alertas activas); scheduler cada 5 min; dedup por `externalId`.
+- ✅ `prisma db push` — 6 tablas (User, UserPreference, Location, DisasterEvent, Notification, AuditLog); PostgreSQL en Docker (`alerta360-db`, :5432).
+- ✅ Verificado: eventos reales de USGS y NOAA en `/api/events`.
+
+#### Cambios Realizados (frontend):
+- ✅ **`tailwind.config.js`** / **`src/index.css`** — tema oscuro premium, colores neón por severidad, utilidades `.glass*`, animaciones, overrides de Leaflet.
+- ✅ **`src/components/AuthModal.tsx`** (nuevo) — login/registro con token JWT en `localStorage`.
+- ✅ **`src/components/Header.tsx`**, **`Dashboard.tsx`** (card de alerta crítica, stat cards con sparklines SVG, event cards), **`Map.tsx`** (CARTO dark, marcadores con glow/pulso, líneas de conexión 5–500 km, retícula, controles, popups glass, auto-fit).
+- ✅ **`src/services/api.ts`** — reescrito: persistencia del JWT, `register`/`login`/`logout`/`getMe`, eventos y ubicaciones sin datos mock.
+
+#### Estado:
+- ✅ TSC 0 (backend + frontend) · build 133 módulos, 376 kB (116,84 kB gzip)
+- ✅ Backend en :3000 y frontend en :5173 (proxy Vite → backend)
+
+### **2026-10-16 — Fix de tipos: `import.meta.env`** · `4004261`
+#### Cambios Realizados:
+- ✅ **`src/services/api.ts`** — `process.env.VITE_API_URL` → `import.meta.env.VITE_API_URL` (convención Vite, sin `@types/node`).
+- ✅ **`src/vite-env.d.ts`** (nuevo) — `/// <reference types="vite/client" />`.
+
+#### Estado:
+- ✅ TSC 0 · build 114,34 kB gzip
 
 ---
 
-#### Cambios Realizados:
-- ✅ `src/services/api.ts:4` — Reemplazado `process.env.VITE_API_URL` por `import.meta.env.VITE_API_URL` (convención Vite nativa, evita dependencia de `@types/node`)
-- ✅ `src/vite-env.d.ts` (nuevo) — Archivo de declaración de tipos con `/// <reference types="vite/client" />` para que TypeScript reconozca `import.meta.env`
-- ✅ Type-check pasa limpio (`tsc --noEmit`, 0 errores)
-- ✅ Build verificado (114.34 kB gzipped)
+### **2026-10-15 — Fases 1 a 4: MVP, infraestructura y estructura de expansión** · commits `d745b90` → `0f615e0` (2026-10-16)
+#### Fase 1 — MVP frontend:
+- ✅ React 18 + Vite + Tailwind + Leaflet: `App.tsx`, `Header.tsx`, `Map.tsx`, `Dashboard.tsx`, `services/api.ts` (con datos mock), `types/index.ts`, `index.css`.
+- ✅ Configuración: `package.json`, `vite.config.ts`, `tsconfig.json`, `tailwind.config.js`, `postcss.config.js`, `.env.example`, `.gitignore`, `Makefile`.
+- ✅ Documentación: `README.md`, `QUICK_START.md`, `STATUS.md`, `ALERTA360_ARQUITECTURA_MAESTRA.md`, `ALERTA360_HERRAMIENTAS_RECOMENDADAS.md`, `INDICE_DOCUMENTACION.md`, `AUDITORIA_FASE_1.md` (y `FASE_1_RESUMEN.md`, hoy eliminado).
+- ✅ Build: 114,36 kB gzip · TSC 0 warnings.
+- ℹ️ Las ramas `master` (v1) y `feat/alerta360-v2-clean` (v2) citadas en ese momento ya no existen; hoy solo están `main` y `ui/redesign-v2`.
 
-#### Estado:
-- ✅ Type Safety: 100% restaurado
+#### Fase 2 — infraestructura backend:
+- ✅ Fastify + TypeScript: `backend/src/index.ts` con `/health`.
+- ✅ PostgreSQL + Prisma: `schema.prisma` con 6 modelos (User, UserPreference, Location, DisasterEvent, Notification, AuditLog).
+- ✅ `docker-compose.yml` (PostgreSQL + backend), `backend/Dockerfile`, `backend/.env.example`.
+- ✅ `AUDITORIA_FASE_2.md` (y `FASE_2_RESUMEN.md`, hoy eliminado).
 
----
+#### Fase 3 — infraestructura de producción (primera versión):
+- ✅ `.github/workflows/ci.yml` + `deploy.yml`, `docker-compose.prod.yml` (5 servicios), `nginx.conf` (TLS, cabeceras, rate limiting, gzip), `monitoring/prometheus.yml`, `scripts/deploy.sh` + `backup.sh`.
+- ✅ `AUDITORIA_FASE_3.md` (y `FASE_3_RESUMEN.md`, hoy eliminado). Todo esto se rehízo el 2026-10-17/18 (ver arriba).
 
-### **2026-10-15 — Fase 4: Estructura de Expansión Creada**
+#### Fase 4 — estructura de expansión:
+- ✅ `mobile/package.json` (React Native), `ml/requirements.txt` + `ml/api/main.py` (FastAPI), `docs/fase4/FASE_4_PLAN.md`.
+- ⏳ Son solo esqueletos: `mobile/` no tiene código fuente y `ml/` contiene un único archivo Python.
 
-#### Cambios Realizados:
-- ✅ Creada estructura de directorios para Fase 4
-  - `mobile/` — React Native app
-  - `ml/` — Python ML API
-  - `docs/fase4/` — Documentación Fase 4
-
-- ✅ Archivos creados:
-  - `mobile/package.json` — Dependencias React Native
-  - `ml/requirements.txt` — Dependencias Python
-  - `ml/api/main.py` — FastAPI service para ML
-  - `docs/fase4/FASE_4_PLAN.md` — Plan de Fase 4
-
-- ✅ Directorios creados:
-  - `mobile/src/` — Código fuente mobile
-  - `ml/models/` — Modelos ML
-  - `ml/training/` — Scripts de entrenamiento
-  - `ml/api/` — API FastAPI
-
-#### Estado:
-- ✅ Fase 4 Estructura: 100% Completa
-- ⏳ Fase 4 Desarrollo: 0% (Próximo)
-
----
-
-### **2026-10-15 — Fase 3: Infraestructura de Producción Configurada**
-
-#### Cambios Realizados:
-- ✅ CI/CD con GitHub Actions
-  - `.github/workflows/ci.yml` — Build & Test
-  - `.github/workflows/deploy.yml` — Deploy to Production
-
-- ✅ Docker Production
-  - `docker-compose.prod.yml` — 5 servicios (db, backend, nginx, prometheus, grafana)
-  - `Dockerfile` — Backend image
-
-- ✅ Nginx Reverse Proxy
-  - `nginx.conf` — SSL/TLS, security headers, rate limiting, gzip
-
-- ✅ Monitoring
-  - `monitoring/prometheus.yml` — Metrics collection
-
-- ✅ Scripts
-  - `scripts/deploy.sh` — Automated deployment
-  - `scripts/backup.sh` — Database backup
-
-- ✅ Documentación
-  - `FASE_3_RESUMEN.md` — Resumen de progreso
-  - `AUDITORIA_FASE_3.md` — Auditoría completa
-
-#### Estado:
-- ✅ Fase 3 Infraestructura: 100% Completa
-- ⏳ Fase 3 Deploy Real: 0% (Próximo)
-
----
-
-### **2026-10-15 — Fase 2: Infraestructura Backend Completada**
-
-#### Cambios Realizados:
-- ✅ Backend (Fastify + Node.js + TypeScript)
-  - `backend/src/index.ts` — Server entry point
-  - Health check endpoint (`/health`)
-  - TypeScript 100% type-safe
-  - Build exitoso
-
-- ✅ Base de Datos (PostgreSQL + Prisma)
-  - `backend/prisma/schema.prisma` — 6 modelos
-  - User, UserPreference, Location, DisasterEvent, Notification, AuditLog
-  - Prisma Client generado
-  - PostGIS ready
-  - pgvector ready
-
-- ✅ Docker & DevOps
-  - `docker-compose.yml` — PostgreSQL + Backend
-  - `backend/Dockerfile` — Backend image
-  - Health checks configurados
-
-- ✅ Configuración
-  - `backend/package.json` — Dependencies
-  - `backend/tsconfig.json` — TypeScript config
-  - `backend/.env.example` — Environment variables
-
-- ✅ Documentación
-  - `FASE_2_RESUMEN.md` — Resumen de progreso
-  - `AUDITORIA_FASE_2.md` — Auditoría completa
-
-#### Estado:
-- ✅ Fase 2 Infraestructura: 100% Completa
-- ⏳ Fase 2 Features: 0% (Próximo)
-
----
-
-### **2026-10-15 — Fase 1: MVP Frontend Completado**
-
-#### Cambios Realizados:
-- ✅ Frontend (React 18 + Vite + Tailwind + Leaflet)
-  - `src/App.tsx` — Componente principal
-  - `src/components/Header.tsx` — Encabezado
-  - `src/components/Map.tsx` — Mapa Leaflet
-  - `src/components/Dashboard.tsx` — Panel de eventos
-  - `src/services/api.ts` — HTTP client + mock data
-  - `src/types/index.ts` — TypeScript types
-  - `src/index.css` — Estilos globales
-
-- ✅ Configuración
-  - `package.json` — Dependencias
-  - `vite.config.ts` — Vite config
-  - `tsconfig.json` — TypeScript config
-  - `tailwind.config.js` — Tailwind config
-  - `postcss.config.js` — PostCSS config
-  - `.env.example` — Environment variables
-  - `.gitignore` — Git exclusions
-  - `Makefile` — Comandos útiles
-
-- ✅ Documentación
-  - `README.md` — Documentación principal
-  - `QUICK_START.md` — Guía 5 minutos
-  - `FASE_1_RESUMEN.md` — Resumen técnico
-  - `STATUS.md` — Estado actual
-  - `ALERTA360_ARQUITECTURA_MAESTRA.md` — Plan estratégico
-  - `ALERTA360_HERRAMIENTAS_RECOMENDADAS.md` — Tech stack
-  - `INDICE_DOCUMENTACION.md` — Índice de docs
-  - `AUDITORIA_FASE_1.md` — Auditoría completa
-
-- ✅ Git
-  - Rama `master` (v1) — Referencia completa
-  - Rama `feat/alerta360-v2-clean` (v2) — Código limpio
-
-#### Estado:
-- ✅ Fase 1 MVP: 100% Completo
-- ✅ Build: 114.36 kB (gzipped)
-- ✅ TypeScript: 0 warnings
-
----
-
-### **2026-10-15 — Proyecto Inicializado**
-
-#### Cambios Realizados:
-- ✅ Proyecto creado desde cero
-- ✅ Estructura base definida
-- ✅ Documentación inicial
+### **2026-10-15 — Proyecto inicializado** · `f3213f5` + `d9ef585`
+- ✅ Repositorio creado, estructura base y datos sensibles excluidos del control de versiones.
+- ℹ️ **Antecedentes:** el historial conserva commits del 2026-09-05 al 2026-10-04 (`f19acd4` → `672bd44`) de una versión anterior con otro stack (ASP.NET, frontend TS+Vite vanilla, tests xUnit, Telegram y Fase 0 de validación). `d745b90` eliminó ese código (~8.000 líneas) antes del MVP actual.
 
 ---
 
 ## 📊 Resumen de Fases
 
-| Fase | Status | Completitud | Fecha |
-|------|--------|-------------|-------|
-| Fase 0: Validación | ⏳ Pendiente | 0% | - |
-| Fase 1: MVP Frontend | ✅ Completa | 100% | 2026-10-15 |
-| Fase 1: Entrega alertas (SendGrid + Twilio + Swagger) | ✅ Completa | 100% | 2026-10-18 |
-| Fase 2: Infraestructura | ✅ Completa | 100% | 2026-10-15 |
-| Fase 2: Features | 🚧 En curso | 40% | 2026-10-18 |
-| Fase 3: Infraestructura | ✅ Completa | 100% | 2026-10-15 |
-| Fase 3: Deploy Real | ✅ Lista | 100% | 2026-10-18 |
-| Fase 4: Estructura | ✅ Completa | 100% | 2026-10-15 |
-| Fase 4: Motor de Alertas | ✅ Implementada | 100% | 2026-10-18 |
+| Fase | Estado | Detalle | Última actualización |
+|------|--------|---------|----------------------|
+| Fase 0: Validación con usuarios | ⏳ Pendiente | Hubo trabajo en la versión anterior (sept.–oct.), no en la actual | — |
+| Fase 1: MVP frontend | ✅ Completa | Mapa 2D/3D, dashboard, auth, línea de tiempo, zonas | 2026-10-19 |
+| Fase 1: Entrega de alertas | ✅ Completa | SendGrid, Twilio, Swagger | 2026-10-18 |
+| Fase 2: Backend e ingesta | ✅ Completa | 7 fuentes: USGS, NOAA, NASA EONET, GDACS, Meteoalarm, NHC e IDEAM (lluvia diaria, Colombia) + circuit breaker + frescura | 2026-10-25 |
+| Fase 3: Infraestructura de producción | ✅ Lista | Métricas, alertas, TLS, backups, status page, CD con rollback | 2026-10-18 |
+| Fase 3: Push offline | ✅ Completa | Service Worker + Web Push VAPID | 2026-10-19 |
+| Fase 3: Despliegue real | ⏳ Bloqueado (externo) | Falta servidor, DNS, certificado TLS y secretos `PROD_*` | — |
+| Fase 4: Motor de alertas | ✅ Completo | Matching de 5 reglas, WS, dedup, zonas círculo/polígono | 2026-10-19 |
+| Fase 4: Catálogo de mejoras | 🚧 En curso | Hechas #1 frescura, #2 B5, #3 A3, #4 B1, #5 B3, #6 D1, #7 D2 y A4 NHC | 2026-10-20 |
+| Fase 4: Mobile (React Native) | ⏳ Solo esqueleto | `mobile/package.json` | 2026-10-15 |
+| Fase 4: ML (FastAPI) | ⏳ Solo esqueleto | `ml/api/main.py` | 2026-10-15 |
 
 ---
 
-## 📁 Estructura del Proyecto
+## 📁 Estructura del Proyecto (2026-10-25)
 
 ```
 ALERTA360/
-├── src/                       # Frontend (Fase 1) — archivos en raíz del proyecto
-│   ├── components/            # Header, Map, Map3D, Dashboard, Sparkline, EventDetailCard, AuthModal
-│   ├── services/              # api.ts
-│   ├── types/                 # TypeScript types
-│   └── ...
-├── backend/                   # Fastify (Fase 2)
+├── src/                          # Frontend (React 18 + Vite + Tailwind)
+│   ├── App.tsx · main.tsx · index.css · vite-env.d.ts
+│   ├── components/               # AuthModal, Dashboard, EventDetailCard, Header, LocationPanel,
+│   │                             # Map, Map3D, NotificationsPanel, Sparkline
+│   ├── hooks/                    # useAlerts (WS + sondeo), usePushSubscription
+│   ├── services/api.ts           # Cliente HTTP (auth, eventos, zonas, notificaciones, push)
+│   ├── data/demoEvents.ts        # 178 eventos demo
+│   └── types/                    # index.ts, leaflet-heat.d.ts
+├── public/                       # sw.js (Service Worker), status.html
+├── backend/                      # Fastify 4 + Prisma + PostgreSQL
+│   ├── prisma/schema.prisma      # 6 modelos
 │   ├── src/
-│   │   ├── index.ts       # Server entry
-│   │   ├── routes/        # auth, events, locations
-│   │   ├── services/      # ingestion.ts (USGS + NOAA)
-│   │   └── ...
-│   ├── prisma/
-│   │   └── schema.prisma  # DB schema
-│   └── package.json
-│
-├── mobile/                # React Native (Fase 4)
-│   ├── package.json
-│   └── src/
-│
-├── ml/                    # Python ML (Fase 4)
-│   ├── requirements.txt
-│   ├── api/
-│   │   └── main.py
-│   ├── models/
-│   └── training/
-│
-├── .github/
-│   └── workflows/
-│       ├── ci.yml
-│       └── deploy.yml
-│
-├── monitoring/
-│   └── prometheus.yml
-│
-├── scripts/
-│   ├── deploy.sh
-│   └── backup.sh
-│
+│   │   ├── app.ts · index.ts     # buildApp() + arranque (schedulers de ingesta y digest)
+│   │   ├── routes/               # auth, docs, events, geocode, locations, notifications,
+│   │   │                         # preferences, sources
+│   │   ├── services/
+│   │   │   ├── ingestion.ts      # USGS, NOAA, EONET, GDACS, Meteoalarm, NHC + frescura
+│   │   │   ├── matching.ts       # Motor de alertas
+│   │   │   ├── push.ts           # Web Push VAPID
+│   │   │   ├── analysis/         # exposure.ts (población + escalada)
+│   │   │   ├── notifications/    # dispatch, email (SendGrid), sms (Twilio), digest
+│   │   │   └── sources/          # health.ts (circuit breaker), types.ts
+│   │   ├── realtime/             # hub.ts, ws.ts
+│   │   ├── middleware/           # errorHandler, requireAuth
+│   │   ├── plugins/metrics.ts    # Prometheus
+│   │   ├── docs/openapi.ts       # Swagger
+│   │   ├── types/web-push.d.ts
+│   │   └── utils/                # config (Zod), geo, logger (Pino), prisma
+│   └── test/                     # 16 archivos Vitest (146 tests)
+├── mobile/                       # React Native (solo package.json)
+├── ml/                           # FastAPI (requirements.txt + api/main.py)
+├── monitoring/                   # prometheus.yml, alerts.yml, alertmanager.yml, grafana/
+├── scripts/                      # deploy.sh, backup.sh, init-letsencrypt.sh
+├── .github/workflows/            # ci.yml, deploy.yml
 ├── docs/
-│   ├── fase4/
-│   │   └── FASE_4_PLAN.md
-│   └── ...
-│
-├── docker-compose.yml      # Dev
-├── docker-compose.prod.yml # Prod
+│   ├── FASE_3_PRODUCCION.md      # Runbook de producción
+│   ├── fase4/                    # FASE_4_PLAN.md, MOTOR_ALERTAS.md
+│   └── redesign/                 # MAPA.md + capturas
+├── docker-compose.yml            # Dev
+├── docker-compose.prod.yml       # Prod (10 servicios)
 ├── nginx.conf
-├── BITACORA.md             # Este archivo
-└── ...
+└── BITACORA.md                   # Este archivo
 ```
 
 ---
 
-## 📈 Métricas del Proyecto
+## 📈 Métricas del Proyecto (medidas 2026-10-25)
 
 ### Código
-- **Líneas de código productivo:** ~2.825 (frontend) + ~693 (backend)
-- **Componentes React:** 7 + App (Header, Map, Map3D, Dashboard, Sparkline, EventDetailCard, AuthModal)
+- **Frontend:** ~3.990 líneas TS/TSX en 18 archivos (+119 de datos demo)
+- **Backend:** ~4.277 líneas TS en 31 archivos
+- **Tests backend:** ~2.116 líneas, 16 archivos, 146 tests
+- **Componentes React:** 9 + 2 hooks
 - **Modelos de BD:** 6 (User, UserPreference, Location, DisasterEvent, Notification, AuditLog)
-- **TypeScript files:** 24 (14 frontend + 10 backend)
-- **Python files:** 1
+- **Rutas API:** 8 módulos · **Fuentes de datos:** 6
+- **Python:** 1 archivo
 
-### Performance
-- **Frontend Build:** ~13 s (2.461 módulos)
-- **Backend Build:** ~2 s
-- **Bundle Size (gzipped):** 240 kB inicial + 221 kB diferido (Map3D)
-- **Load Time (4G):** ~0.5s
-- **Lighthouse Score:** ~92/100 (medido antes del rediseño; sin re-medir)
+### Build
+- **Frontend:** 2.465 módulos, ~53 s en la máquina de desarrollo
+- **Bundle:** `index` 760 kB (247 kB gzip) + `Map3D` 812 kB (221 kB gzip, carga diferida) + CSS 42 kB / 65 kB. Ambos chunks superan el umbral de aviso de Vite (500 kB).
+- **Lighthouse / tiempo de carga:** sin medir desde los rediseños del 2026-10-17
 
 ### Calidad
-- **TypeScript Warnings:** 0
-- **Build Errors:** 0
-- **Runtime Errors:** 0
-- **Type Safety:** 100%
+- **Errores TypeScript:** 0 (backend y frontend)
+- **Tests:** 146/146 pasan por archivo; la suite completa en paralelo es inestable por timeouts cuando la máquina está cargada (ver Pendientes)
 
 ### Documentación
-- **Archivos .md:** 13+
-- **Líneas de docs:** ~5000+
-- **Guías:** 6+
-- **Auditorías:** 3
+- **Archivos .md:** 18 (raíz + `docs/`)
+- **Auditorías:** 3 (`AUDITORIA_FASE_1/2/3.md`)
+
+---
+
+## ⏳ Pendientes y riesgos conocidos
+
+- ⏳ **Peticiones al IDEAM y al SGC** (enviadas el 2026-10-25): acceso a alertas hidrológicas, de deslizamientos y al catálogo sísmico en tiempo real. Plazo legal de respuesta ≈ 2026-11-09.
+- ⏳ **IDEAM:** probar una alerta real con una zona en Colombia (solo se avisa cuando se crea un evento nuevo, es decir, con el siguiente día procesado).
+- ⏳ **`IDEAN.MD`:** el prompt usado con opencode está sin versionar; decidir si moverlo a `docs/` o borrarlo.
+- ⏳ **Meteoalarm en producción:** `METEOALARM_*` tampoco se reenvía en `docker-compose.prod.yml`, así que en prod siempre queda con los valores por defecto (desactivado).
+- ⏳ **Tests inestables con carga:** `alert-engine.int.test.ts` (timeout de 5 s) y los hooks de `routes`/`docs` (10 s). Opciones: subir `testTimeout`/`hookTimeout` en `vitest.config.ts` o limitar los workers.
+- ⏳ **Ruido en logs de tests:** `dispatch.ts:55` (`buildEmail`) lanza `Cannot read properties of undefined (reading 'severity')` cuando el Prisma falso no devuelve el evento. No rompe nada, pero ensucia la salida.
+- ⏳ **Dedup del push en vivo:** el WS recibe la alerta en cada matching; solo se deduplica en BD y visualmente en el cliente.
+- ⏳ **Meteoalarm:** el contrato JSON es una suposición; validarlo contra un endpoint real antes de activarlo.
+- ⏳ **Bundle:** `index` (760 kB) supera el umbral de Vite; evaluar dividirlo con `manualChunks` o `import()` dinámico.
+- ⏳ **`vite.config.ts`:** quitar el `watch.ignored` de `alerta360-ui-redesign/` (la carpeta ya no existe).
+- ⏳ **`MEJORAS_DESDE_WORLD_INTEL.md`:** ya está versionado; falta decidir si moverlo a `docs/fase4/`.
+- ⏳ **Externo:** servidor, DNS, certificado TLS y secretos `PROD_HOST` / `PROD_USER` / `PROD_SSH_KEY`.
+- ⏳ **Fase 0:** validar el producto con usuarios reales.
+- ⏳ **Mobile y ML:** pasar de esqueleto a desarrollo.
 
 ---
 
 ## 🔗 Enlaces Importantes
 
 - **Repositorio:** https://github.com/armado719/ALERTA360
-- **Documentación:** Ver README.md
-- **Arquitectura:** Ver ALERTA360_ARQUITECTURA_MAESTRA.md
-- **Tech Stack:** Ver ALERTA360_HERRAMIENTAS_RECOMENDADAS.md
+- **Documentación:** `README.md` · índice en `INDICE_DOCUMENTACION.md`
+- **Arquitectura:** `ALERTA360_ARQUITECTURA_MAESTRA.md`
+- **Tech stack:** `ALERTA360_HERRAMIENTAS_RECOMENDADAS.md`
+- **Producción:** `docs/FASE_3_PRODUCCION.md`
+- **Motor de alertas:** `docs/fase4/MOTOR_ALERTAS.md`
 
 ---
 
@@ -741,13 +683,12 @@ ALERTA360/
 
 ## 📝 Notas
 
-- Esta bitácora se actualiza con cada cambio significativo
-- Los cambios se registran cronológicamente (más reciente primero)
-- Cada entrada incluye: fecha, descripción, archivos afectados, estado
+- Esta bitácora se actualiza con cada cambio significativo.
+- Orden cronológico inverso por fecha de commit; cada entrada indica fecha, commit(s), archivos y estado.
+- Los conteos de tests reflejan los tests definidos al cerrar cada commit.
 
 ---
 
-**Última actualización:** 2026-10-19  
-**Versión de la bitácora:** 1.3  \
+**Última actualización:** 2026-10-25  
+**Versión de la bitácora:** 1.4  
 **Status:** ✅ Activo
-

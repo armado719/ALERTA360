@@ -1,6 +1,9 @@
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
+  // PostCSS en línea: sin esto Vite sube hasta el `postcss.config.js` del
+  // frontend, que exige `tailwindcss`, y en CI (solo deps de backend) aborta.
+  css: { postcss: {} },
   test: {
     environment: 'node',
     include: ['test/**/*.test.ts'],

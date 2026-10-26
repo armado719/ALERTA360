@@ -167,7 +167,9 @@ export async function registerGeocodeRoutes(app: FastifyInstance) {
   )
 }
 
-function requireGeocodeEnabled(_request: FastifyRequest, reply: import('fastify').FastifyReply) {
+// `async` es obligatorio: un preHandler síncrono sin `done()` deja la petición
+// colgada para siempre cuando la geocodificación está activa.
+async function requireGeocodeEnabled(_request: FastifyRequest, reply: import('fastify').FastifyReply) {
   if (config.GEOCODE_ENABLED !== 'true') {
     return reply.status(503).send({ error: 'Geocodificación deshabilitada' })
   }

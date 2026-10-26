@@ -1,10 +1,8 @@
 import { useMemo, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import {
   Search,
   Clock,
-  Filter,
-  ChevronDown,
   Activity,
   Radio,
   Activity as WaveIcon,
@@ -16,8 +14,10 @@ import {
   Snowflake,
   Droplet,
   ThermometerSun,
+  SlidersHorizontal,
 } from 'lucide-react'
-import { DisasterEvent, DisasterType } from '../types'
+import { DisasterEvent } from '../types'
+import { DISASTER_TYPES, ALL_SOURCES } from '../data/eventTypes'
 import { Sparkline, DonutChart } from './Sparkline'
 
 interface DashboardProps {
@@ -27,26 +27,13 @@ interface DashboardProps {
   filters: {
     types: string[]
     timeRange: '1h' | '24h' | '7d'
+    severities: string[]
+    sources: string[]
   }
-  onFiltersChange: (filters: any) => void
   loading: boolean
   demo?: boolean
+  onOpenExplorer: () => void
 }
-
-const DISASTER_TYPES: { type: DisasterType; label: string; short: string }[] = [
-  { type: 'earthquake', label: 'Terremotos', short: 'Sismos' },
-  { type: 'storm', label: 'Tormentas', short: 'Tormentas' },
-  { type: 'flood', label: 'Inundaciones', short: 'Inund.' },
-  { type: 'rain', label: 'Lluvia', short: 'Lluvia' },
-  { type: 'landslide', label: 'Avalanchas', short: 'Avalan.' },
-  { type: 'volcanic', label: 'Volcánicos', short: 'Volcán' },
-  { type: 'hurricane', label: 'Huracanes', short: 'Huracán' },
-  { type: 'wildfire', label: 'Incendios', short: 'Incendios' },
-  { type: 'drought', label: 'Sequía', short: 'Sequía' },
-  { type: 'heatwave', label: 'Ola de calor', short: 'Calor' },
-  { type: 'snow', label: 'Nieve', short: 'Nieve' },
-  { type: 'dust', label: 'Dust/Haze', short: 'Aire' },
-]
 
 const SEVERITY = {
   critical: { color: '#f87171', label: 'CRÍTICO', bg: 'bg-red-400/10', text: 'text-red-300', border: 'border-red-400/30' },
@@ -90,12 +77,11 @@ export default function Dashboard({
   selectedEvent,
   onSelectEvent,
   filters,
-  onFiltersChange,
   loading,
   demo = false,
+  onOpenExplorer,
 }: DashboardProps) {
   const [query, setQuery] = useState('')
-  const [showFilters, setShowFilters] = useState(false)
 
   const counts = useMemo(
     () => ({
@@ -119,34 +105,43 @@ export default function Dashboard({
     label: dt.label,
     short: dt.short,
     value: events.filter((e) => e.type === dt.type).length,
+    color: dt.color,
   }))
   const donutTotal = donutData.reduce((acc, d) => acc + d.value, 0)
-  const donutColors = ['#f87171', '#fb923c', '#38bdf8', '#fbbf24', '#a78bfa', '#f472b6']
 
   const visibleEvents = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return events
-    return events.filter(
-      (e) =>
-        e.title.toLowerCase().includes(q) ||
-        e.description.toLowerCase().includes(q) ||
-        e.source.toLowerCase().includes(q)
-    )
+    let list = q
+      ? events.filter(
+          (e) =>
+            e.title.toLowerCase().includes(q) ||
+            e.description.toLowerCase().includes(q) ||
+            e.source.toLowerCase().includes(q)
+        )
+      : events
+    list = [...list].sort((a, b) => {
+      const sa = ({ critical: 4, high: 3, medium: 2, low: 1 } as any)[a.severity] ?? 0
+      const sb = ({ critical: 4, high: 3, medium: 2, low: 1 } as any)[b.severity] ?? 0
+      if (sb !== sa) return sb - sa
+      return new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime()
+    })
+    return list.slice(0, 8)
   }, [events, query])
 
-  const handleTypeToggle = (type: string) => {
-    const newTypes = filters.types.includes(type)
-      ? filters.types.filter((t) => t !== type)
-      : [...filters.types, type]
-    onFiltersChange({ ...filters, types: newTypes })
-  }
+  // Criterio: 1 por cada tipo/severidad/fuente desmarcada + 1 si el periodo no es 24h.
+  const activeFiltersCount =
+    (DISASTER_TYPES.length - filters.types.length) +
+    (4 - filters.severities.length) +
+    (ALL_SOURCES.length - filters.sources.length) +
+    (filters.timeRange !== '24h' ? 1 : 0)
 
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* ================= Cabecera: búsqueda + KPIs ================= */}
       <div className="shrink-0 p-3 pb-2.5">
-        <div className="relative mb-3">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+        <div className="relative mb-3 flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           <input
             type="text"
             value={query}
@@ -157,6 +152,20 @@ export default function Dashboard({
                        focus:outline-none focus:border-cyan-400/40 focus:ring-1 focus:ring-cyan-400/30 transition"
           />
         </div>
+        <button
+          onClick={onOpenExplorer}
+          className="relative p-2 rounded-xl bg-[#101d2a] border border-white/[0.06] text-slate-300 hover:text-white hover:border-cyan-400/40 transition"
+          aria-label="Abrir centro de eventos"
+          title="Centro de eventos"
+        >
+          <SlidersHorizontal className="w-4 h-4" />
+          {activeFiltersCount > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[14px] h-3.5 px-1 rounded-full bg-cyan-400 text-[9px] font-bold text-black grid place-items-center">
+              {activeFiltersCount}
+            </span>
+          )}
+        </button>
+      </div>
 
         <div className="grid grid-cols-2 gap-2.5">
           {statCards.map((card, i) => (
@@ -214,7 +223,7 @@ export default function Dashboard({
               <DonutChart
                 data={donutData.map((d) => d.value)}
                 labels={donutData.map((d) => d.label)}
-                colors={donutColors}
+                colors={donutData.map((d) => d.color)}
               />
             ) : (
               <div className="h-full grid place-items-center text-[10px] text-slate-600">
@@ -232,11 +241,11 @@ export default function Dashboard({
           </div>
 
           <ul className="flex-1 min-w-0 space-y-[3px]">
-            {donutData.map((d, i) => (
+            {donutData.map((d) => (
               <li key={d.label} className="flex items-center gap-1.5 text-[10px]">
                 <span
                   className="w-1.5 h-1.5 rounded-full shrink-0"
-                  style={{ background: donutColors[i] }}
+                  style={{ background: d.color }}
                 />
                 <span className="flex-1 min-w-0 truncate text-slate-400">{d.short}</span>
                 <span className="text-slate-200 font-semibold tabular-nums">{d.value}</span>
@@ -250,71 +259,6 @@ export default function Dashboard({
       </div>
 
       <div className="h-px shrink-0 bg-white/[0.06]" />
-
-      {/* ================= Filtros (compactos) ================= */}
-      <div className="shrink-0 px-3 pt-2">
-        <button
-          onClick={() => setShowFilters((v) => !v)}
-          className="w-full flex items-center justify-between group"
-        >
-          <span className="flex items-center gap-2 text-[10.5px] font-bold tracking-[0.16em] text-slate-400 group-hover:text-slate-300 transition">
-            <Filter className="w-3.5 h-3.5" />
-            FILTRAR POR TIPO
-          </span>
-          <ChevronDown
-            className={`w-3.5 h-3.5 text-slate-500 transition-transform ${showFilters ? 'rotate-180' : ''}`}
-          />
-        </button>
-
-        <AnimatePresence initial={false}>
-          {showFilters && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="overflow-hidden"
-            >
-              <div className="flex flex-wrap gap-1.5 pt-2.5">
-                {DISASTER_TYPES.map(({ type, short }) => {
-                  const active = filters.types.includes(type)
-                  return (
-                    <button
-                      key={type}
-                      onClick={() => handleTypeToggle(type)}
-                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition
-                        ${
-                          active
-                            ? 'bg-cyan-400/10 text-cyan-300 border-cyan-400/35'
-                            : 'bg-white/[0.02] text-slate-500 border-white/[0.06] hover:text-slate-300'
-                        }`}
-                    >
-                      {short}
-                    </button>
-                  )
-                })}
-              </div>
-
-              <div className="flex items-center gap-2 pt-2.5">
-                {(['1h', '24h', '7d'] as const).map((range) => (
-                  <button
-                    key={range}
-                    onClick={() => onFiltersChange({ ...filters, timeRange: range })}
-                    className={`flex-1 py-1.5 rounded-lg text-[11px] border transition
-                      ${
-                        filters.timeRange === range
-                          ? 'bg-cyan-400/10 text-cyan-300 border-cyan-400/35'
-                          : 'bg-white/[0.02] text-slate-500 border-white/[0.06] hover:text-slate-300'
-                      }`}
-                  >
-                    {range === '1h' ? 'Última hora' : range === '24h' ? '24 h' : '7 días'}
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
 
       {/* ================= Lista de eventos ================= */}
       <div className="flex-1 min-h-[96px] overflow-y-auto px-3 py-2">
@@ -369,6 +313,12 @@ export default function Dashboard({
                 </motion.button>
               )
             })}
+            <button
+              onClick={onOpenExplorer}
+              className="w-full mt-1.5 py-1.5 rounded-xl text-[11px] font-medium text-cyan-300 border border-cyan-400/25 hover:bg-cyan-400/10 transition"
+            >
+              Ver todos ({events.length}) →
+            </button>
           </div>
         )}
       </div>

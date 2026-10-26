@@ -19,6 +19,8 @@ registerSource('noaa')
 registerSource('nasa_eonet')
 registerSource('gdacs')
 registerSource('meteoalarm')
+registerSource('nhc')
+registerSource('ideam', { staleAfterMs: 3 * 60 * 60 * 1000 })
 
 // ============================================================================
 // USGS Earthquake API
@@ -88,8 +90,11 @@ export interface NOAAAlertProperties {
   headline: string
   description: string
   severity: string
-  starts: string
-  ends?: string
+  // El NWS no publica `starts`: el inicio está en `onset` (o `effective`/`sent`)
+  onset?: string | null
+  effective?: string | null
+  sent?: string | null
+  ends?: string | null
   sender: string
   areaDesc: string
 }
@@ -184,6 +189,12 @@ export function mapNOAA(alert: NOAAAlert) {
   if (coords.longitude < -180 || coords.longitude > 180) return null
   if (isNullIsland(coords)) return null
 
+  // Primera fecha válida; una inválida hacía fallar el insert de toda alerta
+  const occurredAt =
+    [props.onset, props.effective, props.sent]
+      .map((value) => (value ? new Date(value) : null))
+      .find((date): date is Date => !!date && !Number.isNaN(date.getTime())) ?? new Date()
+
   return {
     type: mapNOAAType(props.event),
     source: 'noaa',
@@ -194,7 +205,7 @@ export function mapNOAA(alert: NOAAAlert) {
     title: props.event,
     description: props.description || props.headline || '',
     severity,
-    occurredAt: new Date(props.starts),
+    occurredAt,
     rawData: { headline: props.headline, region: props.sender },
   }
 }
@@ -363,20 +374,25 @@ export function mapEONET(event: EONETEvent) {
 // ============================================================================
 // GDACS (Global Alert for Disaster) API
 // ============================================================================
-// https://www.gdacs.org/gdacsapi/gdacsapi.php
+// https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH (config.GDACS_URL)
 // Eventos multi-riesgo globales: ciclones (TC), inundaciones (FL),
 // sismos (EQ), volcanes (VO), incendios (WF), sequías (DR). Sin clave API.
 //
 // NOTA: GDACS usa [longitude, latitude] (GeoJSON) en geometry.coordinates.
+// Las fechas (`fromdate`) vienen en UTC sin zona horaria.
 
 interface GDACSProperties {
-  eventid: string
+  eventid: number | string
   eventtype: string
   alertlevel: string
   name: string
-  date: string
+  fromdate?: string
   description?: string
-  severity?: number
+  country?: string
+  // La API devuelve el texto "true"/"false"
+  iscurrent?: string | boolean
+  severitydata?: { severity?: number; severitytext?: string; severityunit?: string }
+  url?: { report?: string }
 }
 
 interface GDACSGeometry {
@@ -405,12 +421,12 @@ const GDACS_TYPE_MAP: Record<string, string> = {
   DR: 'drought',
 }
 
-/** GDACS alertlevel → severidad ALERTA360 (green→low, orange→medium, red→high) */
+/** GDACS alertlevel → severidad ALERTA360 (green→low, orange→medium, red→critical) */
 const GDACS_SEVERITY_MAP: Record<string, string> = {
   Green: 'low',
   Orange: 'medium',
-  // GDACS no usa "Red" como nivel; usa severidad numérica cuando alertlevel = "Red"
-  Red: 'high',
+  // Rojo = impacto humanitario severo previsto
+  Red: 'critical',
 }
 
 /**
@@ -428,19 +444,44 @@ function mapGDACSSeverity(eventtype: string, severityNum?: number): string {
   return 'medium'
 }
 
+// La API pagina de a 100 eventos (no admite otro tamaño); los incendios (WF)
+// suelen llenar la primera página, así que se piden unas cuantas más.
+const GDACS_PAGE_SIZE = 100
+const GDACS_MAX_PAGES = 3
+
 async function fetchGDACS(): Promise<GDACSFeature[]> {
-  // Lanza en error: el circuit breaker del ciclo de ingesta lo catcha.
-  const res = await axios.get<GDACSResponse>('https://www.gdacs.org/gdacsapi/gdacsapi.php', {
-    params: {
-      eventlist: 'ALL',
-      days: config.GDACS_DAYS,
-    },
-    timeout: 10000,
-    headers: {
-      'User-Agent': 'ALERTA360 (arc.fullstack30@gmail.com)',
-    },
-  })
-  return res.data?.features ?? []
+  const day = (d: Date) => d.toISOString().slice(0, 10)
+  const params = {
+    eventlist: 'TC;FL;VO;DR;WF', // sin EQ: los sismos los cubre USGS
+    alertlevel: 'Green;Orange;Red',
+    fromDate: day(new Date(Date.now() - config.GDACS_DAYS * 86_400_000)),
+    toDate: day(new Date()),
+  }
+  const byId = new Map<string, GDACSFeature>()
+  for (let page = 1; page <= GDACS_MAX_PAGES; page++) {
+    let features: GDACSFeature[]
+    try {
+      const res = await axios.get<GDACSResponse>(config.GDACS_URL, {
+        params: { ...params, pagenumber: page },
+        // GDACS es lento e irregular (5 s a >30 s por página)
+        timeout: 45000,
+        headers: { 'User-Agent': 'ALERTA360 (arc.fullstack30@gmail.com)' },
+      })
+      features = res.data?.features ?? []
+    } catch (err) {
+      // La primera página lanza: el circuit breaker del ciclo lo registra.
+      // Si falla una posterior, se usa lo que ya llegó. GDACS responde 400
+      // cuando se pide una página más allá del final: no es un fallo.
+      if (page === 1) throw err
+      if ((err as { response?: { status?: number } }).response?.status !== 400) {
+        logger.warn({ page, err: (err as Error).message }, '[INGESTION] GDACS: página incompleta')
+      }
+      break
+    }
+    for (const f of features) byId.set(`${f.properties.eventtype}-${f.properties.eventid}`, f)
+    if (features.length < GDACS_PAGE_SIZE) break
+  }
+  return [...byId.values()]
 }
 
 /**
@@ -457,6 +498,8 @@ export function mapGDACS(feature: GDACSFeature) {
   // GDACS: sismos ya vienen de USGS con mayor precisión → los filtramos
   // para evitar duplicados. Si no hay USGS, se pueden habilitar.
   if (eventType === 'EQ') return null
+  // Evento ya terminado: no debe disparar alertas nuevas
+  if (String(props.iscurrent) === 'false') return null
 
   if (!feature.geometry) return null
   const coords = feature.geometry.coordinates
@@ -466,26 +509,33 @@ export function mapGDACS(feature: GDACSFeature) {
   const lat = Array.isArray(coords[0]) ? coords[0][1] : coords[1]
   if (typeof lon !== 'number' || typeof lat !== 'number') return null
 
-  const severity = GDACS_SEVERITY_MAP[props.alertlevel] ?? mapGDACSSeverity(eventType, props.severity)
-  const occurredAt = props.date ? new Date(props.date) : new Date()
+  const severityValue = props.severitydata?.severity
+  const severity = GDACS_SEVERITY_MAP[props.alertlevel] ?? mapGDACSSeverity(eventType, severityValue)
+  // `fromdate` viene sin zona horaria y es UTC
+  const fromdate = props.fromdate && !/[zZ]|[+-]\d\d:\d\d$/.test(props.fromdate) ? `${props.fromdate}Z` : props.fromdate
+  const parsed = fromdate ? new Date(fromdate) : null
+  const occurredAt = parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date()
   const title = props.name || `${mappedType} event`
 
   return {
     type: mappedType,
     source: 'gdacs' as const,
-    externalId: props.eventid,
+    // eventid solo es único dentro de cada tipo de evento
+    externalId: `gdacs-${eventType}-${props.eventid}`,
     latitude: lat,
     longitude: lon,
-    magnitude: props.severity ?? null,
-    intensity: eventType === 'EQ' ? props.severity : null,
+    magnitude: severityValue ?? null,
+    intensity: null,
     title,
-    description: props.description || title,
+    description: props.severitydata?.severitytext || props.description || title,
     severity,
     occurredAt,
     rawData: {
       alertlevel: props.alertlevel,
       eventtype: eventType,
-      date: props.date,
+      fromdate: props.fromdate,
+      country: props.country,
+      report: props.url?.report,
     },
   }
 }
@@ -572,6 +622,303 @@ export function mapMeteoalarm(feature: MeteoalarmFeature) {
 }
 
 // ============================================================================
+// NHC Forecast Cone / ciclones tropicales — A4
+// ============================================================================
+// Fuente pública del ArcGIS REST de NOAA (capa "Forecast Cone"):
+// https://mapservices.weather.noaa.gov/tropical/rest/services/tropical/NHC_tropical_weather_summary/MapServer/7/query
+// Cada feature es el cono de incertidumbre (Polygon) de un ciclón tropical activo.
+// El cono se persiste en `rawData.cone`; el evento se ancla a su centroide.
+interface NHCResponseFeature {
+  type: string
+  properties: Record<string, unknown>
+  geometry: { type: string; coordinates: number[][][] } | null
+}
+interface NHCResponse { type: string; features: NHCResponseFeature[] }
+
+async function fetchNHC(): Promise<NHCResponseFeature[]> {
+  const res = await axios.get<NHCResponse>(config.NHC_URL, {
+    timeout: config.NHC_TIMEOUT,
+    params: { where: '1=1', outFields: '*', f: 'geojson' },
+    headers: { 'User-Agent': 'ALERTA360 (arc.fullstack30@gmail.com)' },
+  })
+  return res.data?.features ?? []
+}
+
+const NHC_BASIN_MAP: Record<string, string> = {
+  AL: 'Atlántico',
+  EP: 'Pacífico oriental',
+  CP: 'Pacífico central',
+}
+
+// `stormtype` de la capa: sin viento en los atributos, el tipo es la mejor
+// señal de intensidad (TD < 34 kt, TS 34-63 kt, HU >= 64 kt, MH = categoría 3+).
+const NHC_STORM_TYPES: Record<string, { label: string; severity: string }> = {
+  TD: { label: 'Depresión tropical', severity: 'low' },
+  STD: { label: 'Depresión subtropical', severity: 'low' },
+  PTC: { label: 'Potencial ciclón tropical', severity: 'low' },
+  TS: { label: 'Tormenta tropical', severity: 'medium' },
+  STS: { label: 'Tormenta subtropical', severity: 'medium' },
+  HU: { label: 'Huracán', severity: 'high' },
+  MH: { label: 'Huracán mayor', severity: 'critical' },
+}
+
+/**
+ * Mapea un feature del cono NHC a un evento ALERTA360.
+ * - Un evento por tormenta: `externalId = nhc-<stormId>` (p. ej. `nhc-EP222026`),
+ *   sacado de `idp_source` (`ep222026-017_5day_pgn`). Cada aviso nuevo actualiza
+ *   ese evento en vez de crear otro.
+ * - Sin identificador estable se descarta: un id basado en la hora duplicaba el
+ *   ciclón en cada ciclo de ingesta.
+ * - severity por `stormtype`; rawData.cone = GeoJSON Polygon del cono.
+ */
+export function mapNHC(feature: NHCResponseFeature) {
+  if (!feature.geometry || feature.geometry.type !== 'Polygon') return null
+  if (!Array.isArray(feature.geometry.coordinates?.[0])) return null
+
+  const ring = feature.geometry.coordinates[0]
+  // GeoJSON ring es [lon, lat]; polygonCentroid también espera [lon, lat]
+  const points = ring.map((c) => [c[0], c[1]] as [number, number])
+  const centroid = polygonCentroid(points)
+  if (!centroid || isNullIsland(centroid)) return null
+
+  const props = feature.properties || {}
+  const match = /^([a-z]{2}\d{6})-(\d+)/i.exec(String(props.idp_source ?? ''))
+  if (!match) return null
+  const stormId = match[1].toUpperCase()
+  const advisory = String(props.advisnum ?? Number(match[2]))
+
+  const kind = NHC_STORM_TYPES[String(props.stormtype ?? '').toUpperCase()] ?? {
+    label: 'Ciclón tropical',
+    severity: 'medium',
+  }
+  const name = String(props.stormname ?? stormId)
+  const basin = NHC_BASIN_MAP[String(props.basin ?? stormId.slice(0, 2)).toUpperCase()] ?? 'zona tropical'
+  const issued = Number(props.idp_filedate)
+  const occurredAt = Number.isFinite(issued) && issued > 0 ? new Date(issued) : new Date()
+
+  return {
+    type: 'hurricane' as const,
+    source: 'nhc' as const,
+    externalId: `nhc-${stormId}`,
+    latitude: centroid.latitude,
+    longitude: centroid.longitude,
+    magnitude: null,
+    intensity: null,
+    title: `${kind.label} ${name}`,
+    description: `${kind.label} ${name} — aviso ${advisory} del NHC (${basin}). Cono de incertidumbre a 5 días.`,
+    severity: kind.severity,
+    occurredAt,
+    rawData: { ...props, stormId, advisory, cone: feature.geometry } as any,
+  }
+}
+
+/**
+ * Guarda un ciclón: la primera vez lo crea (y avisa al motor de alertas); en
+ * los avisos siguientes actualiza posición, cono, severidad y `fetchedAt` del
+ * mismo evento, sin volver a alertar.
+ */
+export async function saveNHCEvent(
+  prisma: PrismaClient,
+  mapped: NonNullable<ReturnType<typeof mapNHC>>,
+  hooks?: IngestionHooks
+): Promise<'created' | 'updated'> {
+  const existing = await prisma.disasterEvent.findFirst({
+    where: { externalId: mapped.externalId, source: 'nhc' },
+  })
+  if (existing) {
+    const { externalId, source, ...changes } = mapped
+    await prisma.disasterEvent.update({
+      where: { id: existing.id },
+      data: { ...changes, isActive: true, stale: false, fetchedAt: new Date() },
+    })
+    return 'updated'
+  }
+  const created = await prisma.disasterEvent.create({ data: { ...mapped, isActive: true } })
+  await notifyHooks(hooks, created)
+  return 'created'
+}
+
+// ============================================================================
+// IDEAM — Lluvia diaria (Colombia)
+// ============================================================================
+export interface IDEAMRow {
+  codigoestacion: string
+  codigosensor: string
+  nombreestacion: string
+  municipio: string
+  departamento: string
+  latitud: string
+  longitud: string
+  mm: string
+}
+
+export interface IDEAMStationTotal {
+  codigoestacion: string
+  codigosensor: string
+  nombreestacion: string
+  municipio: string
+  departamento: string
+  latitud: string
+  longitud: string
+  mm: number
+}
+
+const IDEAM_MONTHS_ES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+
+export function ideamCleanStation(name: string): string {
+  let s = String(name ?? '')
+  // quita todo desde el primer '[' hasta el final
+  const idx = s.indexOf('[')
+  if (idx >= 0) s = s.slice(0, idx)
+  s = s.replace(/\s*-\s*AUT\b/gi, '')
+  s = s.trim()
+  // capitaliza por palabras (soporta tildes)
+  s = s
+    .split(/\s+/)
+    .map((w) => (w.length ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w))
+    .join(' ')
+  return s
+}
+
+function ideamLongDate(day: string): string {
+  const [y, m, d] = day.split('-')
+  const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+  return `${Number(d)} de ${months[Number(m) - 1]} de ${y}`
+}
+
+function ideamShortDate(day: string): string {
+  const [, m, d] = day.split('-')
+  return `${Number(d)} ${IDEAM_MONTHS_ES[Number(m) - 1]}`
+}
+
+export function ideamTargetDay(now: Date): string {
+  const colombiaMs = now.getTime() - 5 * 60 * 60 * 1000
+  const col = new Date(colombiaMs)
+  const hour = col.getUTCHours()
+  const base = new Date(Date.UTC(col.getUTCFullYear(), col.getUTCMonth(), col.getUTCDate()))
+  const target = new Date(base)
+  if (hour >= 8) {
+    target.setUTCDate(target.getUTCDate() - 1)
+  } else {
+    target.setUTCDate(target.getUTCDate() - 2)
+  }
+  const y = target.getUTCFullYear()
+  const m = String(target.getUTCMonth() + 1).padStart(2, '0')
+  const d = String(target.getUTCDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+export function pickStationTotals(rows: IDEAMRow[]): IDEAMStationTotal[] {
+  const byStation = new Map<string, IDEAMStationTotal>()
+  for (const r of rows) {
+    const mm = Number(r.mm)
+    if (!Number.isFinite(mm)) continue
+    const candidate: IDEAMStationTotal = {
+      codigoestacion: r.codigoestacion,
+      codigosensor: r.codigosensor,
+      nombreestacion: r.nombreestacion,
+      municipio: r.municipio,
+      departamento: r.departamento,
+      latitud: r.latitud,
+      longitud: r.longitud,
+      mm,
+    }
+    const prev = byStation.get(r.codigoestacion)
+    if (!prev || mm > prev.mm) {
+      byStation.set(r.codigoestacion, candidate)
+    }
+  }
+  return [...byStation.values()]
+}
+
+export function mapIDEAMRain(row: IDEAMStationTotal, day: string, now: Date = new Date()) {
+  const mm = row.mm
+  const minMm = config.IDEAM_RAIN_MIN_MM
+  if (!Number.isFinite(mm)) return null
+  if (mm < minMm) return null
+  if (mm > 500) return null
+
+  const lat = Number(row.latitud)
+  const lon = Number(row.longitud)
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null
+  if (isNullIsland({ latitude: lat, longitude: lon })) return null
+
+  let severity = 'medium'
+  let label = 'Lluvia fuerte'
+  if (mm >= 200) { severity = 'critical'; label = 'Lluvia extrema' }
+  else if (mm >= 100) { severity = 'high'; label = 'Lluvia muy fuerte' }
+
+  const stationClean = ideamCleanStation(row.nombreestacion)
+
+  // ¿el día consultado es "ayer" en Colombia?
+  const nowColombia = new Date(now.getTime() - 5 * 60 * 60 * 1000)
+  const todayCol = new Date(Date.UTC(nowColombia.getUTCFullYear(), nowColombia.getUTCMonth(), nowColombia.getUTCDate()))
+  const yesterdayCol = new Date(todayCol)
+  yesterdayCol.setUTCDate(yesterdayCol.getUTCDate() - 1)
+  const yStr = `${yesterdayCol.getUTCFullYear()}-${String(yesterdayCol.getUTCMonth() + 1).padStart(2, '0')}-${String(yesterdayCol.getUTCDate()).padStart(2, '0')}`
+  const isYesterday = day === yStr
+
+  const mmRounded = Math.round(mm)
+  const mmOne = mm.toFixed(1)
+
+  const titleDate = ideamShortDate(day)
+  const title = isYesterday
+    ? `${label} ayer (${titleDate}): ${mmRounded} mm en ${stationClean}, ${row.municipio} (${row.departamento})`
+    : `${label} el ${titleDate}: ${mmRounded} mm en ${stationClean}, ${row.municipio} (${row.departamento})`
+
+  const description = `Lluvia acumulada el ${ideamLongDate(day)} en la estación ${row.nombreestacion.trim()} del IDEAM: ${mmOne} mm. Dato diario publicado con un día de retraso; no es una alerta temprana.`
+
+  const occurredAt = new Date(`${day}T23:59:00-05:00`)
+
+  return {
+    type: 'rain' as const,
+    source: 'ideam' as const,
+    externalId: `ideam-rain-${row.codigoestacion}-${day}`,
+    latitude: lat,
+    longitude: lon,
+    magnitude: Number(mmOne),
+    intensity: null,
+    title,
+    description,
+    severity,
+    occurredAt,
+    rawData: {
+      estacion: row.nombreestacion,
+      codigoestacion: row.codigoestacion,
+      codigosensor: row.codigosensor,
+      mm,
+      dia: day,
+      municipio: row.municipio,
+      departamento: row.departamento,
+      fuente: 'IDEAM (datos.gov.co)',
+    } as any,
+  }
+}
+
+export async function fetchIDEAMRain(day: string): Promise<IDEAMRow[]> {
+  const url = config.IDEAM_RAIN_URL
+  const minMm = config.IDEAM_RAIN_MIN_MM
+  const params = new URLSearchParams()
+  params.set('$select', 'codigoestacion,codigosensor,nombreestacion,municipio,departamento,latitud,longitud,sum(valorobservado) as mm')
+  params.set('$where', `fechaobservacion between '${day}T00:00:00' and '${day}T23:59:59'`)
+  params.set('$group', 'codigoestacion,codigosensor,nombreestacion,municipio,departamento,latitud,longitud')
+  params.set('$having', `sum(valorobservado) >= ${minMm}`)
+  params.set('$limit', '5000')
+  const res = await axios.get<IDEAMRow[]>(`${url}?${params.toString()}`, {
+    timeout: config.IDEAM_TIMEOUT,
+    headers: { 'User-Agent': 'ALERTA360 (arc.fullstack30@gmail.com)' },
+  })
+  return res.data ?? []
+}
+
+// Throttle: consultar como máximo una vez por hora.
+let lastIDEAMSuccessAt: number | null = null
+export function _resetIDEAMThrottle() { lastIDEAMSuccessAt = null }
+export function _getLastIDEAMSuccessAt() { return lastIDEAMSuccessAt }
+export function _setLastIDEAMSuccessAt(v: number | null) { lastIDEAMSuccessAt = v }
+
+// ============================================================================
 // Ingestion cycle
 // ============================================================================
 let ingestCounter = 0
@@ -634,7 +981,7 @@ export async function runFreshnessSweep(
 export async function runIngestion(
   prisma: PrismaClient,
   hooks?: IngestionHooks
-): Promise<{ usgs: number; noaa: number; eonet: number; gdacs: number; meteoalarm: number }> {
+): Promise<{ usgs: number; noaa: number; eonet: number; gdacs: number; meteoalarm: number; nhc: number; ideam: number }> {
   const cycle = ++ingestCounter
   const startedAt = Date.now()
   logger.info(`[INGESTION] Starting cycle #${cycle}`)
@@ -789,7 +1136,72 @@ export async function runIngestion(
     logger.warn('ⓘ [INGESTION] Meteoalarm skipped — circuit breaker abierto')
   }
 
-  const total = usgsInserted + noaaInserted + eonetInserted + gdacsInserted + meteoalarmInserted
+  // ---- NHC Forecast Cone (A4) ----
+  let nhcInserted = 0
+  if (config.NHC_ENABLED === 'true' && canFetch('nhc')) {
+    let nhcEvents: NHCResponseFeature[] = []
+    try {
+      nhcEvents = await fetchNHC()
+      reportSuccess('nhc')
+    } catch (err) {
+      reportFailure('nhc', err)
+    }
+    for (const feature of nhcEvents) {
+      try {
+        const mapped = mapNHC(feature)
+        if (!mapped) continue
+        if ((await saveNHCEvent(prisma, mapped, hooks)) === 'created') nhcInserted++
+      } catch (err) {
+        ingestionErrorsTotal.inc({ source: 'nhc' })
+        logger.error({ err }, '[INGESTION] Error inserting NHC event')
+      }
+    }
+  } else if (config.NHC_ENABLED === 'true') {
+    logger.warn('ⓘ [INGESTION] NHC skipped — circuit breaker abierto')
+  }
+
+  // ---- IDEAM: lluvia diaria (Colombia) ----
+  let ideamInserted = 0
+  if (config.IDEAM_ENABLED === 'true' && canFetch('ideam')) {
+    // Throttle: como máximo una consulta por hora.
+    const nowMs = Date.now()
+    if (lastIDEAMSuccessAt !== null && nowMs - lastIDEAMSuccessAt < 60 * 60 * 1000) {
+      logger.debug('[INGESTION] IDEAM omitido — aún no pasó 1 h desde la última consulta exitosa')
+    } else {
+      let ideamRows: IDEAMRow[] = []
+      try {
+        const day = ideamTargetDay(new Date())
+        ideamRows = await fetchIDEAMRain(day)
+        const totals = pickStationTotals(ideamRows)
+        // map con el día
+        const mappedList = totals
+          .map((t) => mapIDEAMRain(t, day))
+          .filter((m): m is NonNullable<typeof m> => m !== null)
+        reportSuccess('ideam')
+        lastIDEAMSuccessAt = Date.now()
+        for (const mapped of mappedList) {
+          try {
+            const existing = await prisma.disasterEvent.findFirst({
+              where: { externalId: mapped.externalId, source: 'ideam' },
+            })
+            if (existing) continue
+            const created = await prisma.disasterEvent.create({ data: { ...mapped, isActive: true } })
+            ideamInserted++
+            await notifyHooks(hooks, created)
+          } catch (err) {
+            ingestionErrorsTotal.inc({ source: 'ideam' })
+            logger.error({ err, eventId: mapped.externalId }, 'Error inserting IDEAM event')
+          }
+        }
+      } catch (err) {
+        reportFailure('ideam', err)
+      }
+    }
+  } else if (config.IDEAM_ENABLED === 'true') {
+    logger.warn('ⓘ [INGESTION] IDEAM skipped — circuit breaker abierto')
+  }
+
+  const total = usgsInserted + noaaInserted + eonetInserted + gdacsInserted + meteoalarmInserted + nhcInserted + ideamInserted
 
   // ---- métricas ----
   if (usgsInserted > 0) ingestionEventsTotal.inc({ source: 'usgs' }, usgsInserted)
@@ -797,6 +1209,8 @@ export async function runIngestion(
   if (eonetInserted > 0) ingestionEventsTotal.inc({ source: 'nasa_eonet' }, eonetInserted)
   if (gdacsInserted > 0) ingestionEventsTotal.inc({ source: 'gdacs' }, gdacsInserted)
   if (meteoalarmInserted > 0) ingestionEventsTotal.inc({ source: 'meteoalarm' }, meteoalarmInserted)
+  if (nhcInserted > 0) ingestionEventsTotal.inc({ source: 'nhc' }, nhcInserted)
+  if (ideamInserted > 0) ingestionEventsTotal.inc({ source: 'ideam' }, ideamInserted)
   ingestionCycleDuration.set((Date.now() - startedAt) / 1000)
   markIngestionSuccess()
 
@@ -809,9 +1223,9 @@ export async function runIngestion(
   logger.info(
     `[INGESTION] Cycle #${cycle} complete — USGS: ${usgsInserted} new, ` +
       `NOAA: ${noaaInserted} new, EONET: ${eonetInserted} new, GDACS: ${gdacsInserted} new, ` +
-      `METEOALARM: ${meteoalarmInserted} new (${total} total)`
+      `METEOALARM: ${meteoalarmInserted} new, NHC: ${nhcInserted} new, IDEAM: ${ideamInserted} new (${total} total)`
   )
-  return { usgs: usgsInserted, noaa: noaaInserted, eonet: eonetInserted, gdacs: gdacsInserted, meteoalarm: meteoalarmInserted }
+  return { usgs: usgsInserted, noaa: noaaInserted, eonet: eonetInserted, gdacs: gdacsInserted, meteoalarm: meteoalarmInserted, nhc: nhcInserted, ideam: ideamInserted }
 }
 
 // Schedule: every INGEST_INTERVAL ms
@@ -822,6 +1236,8 @@ export function startIngestScheduler(prisma: PrismaClient, hooks?: IngestionHook
     eonet: config.EONET_ENABLED === 'true',
     gdacs: config.GDACS_ENABLED === 'true',
     meteoalarm: config.METEOALARM_ENABLED === 'true',
+    nhc: config.NHC_ENABLED === 'true',
+    ideam: config.IDEAM_ENABLED === 'true',
   }
   const anyEnabled = Object.values(enabledFlags).some(Boolean)
 

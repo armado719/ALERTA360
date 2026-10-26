@@ -6,6 +6,10 @@ import { DisasterEvent } from '../types'
 // Para apuntar a otro backend: VITE_API_URL=https://api.ejemplo.com/api
 const API_BASE = import.meta.env.VITE_API_URL || '/api'
 
+// `vite build --mode demo`: sitio estático (GitHub Pages) sin backend. La app
+// muestra los datos de demostración y no intenta autenticar.
+export const DEMO_MODE = import.meta.env.MODE === 'demo'
+
 // Create axios instance
 const api = axios.create({
   baseURL: API_BASE,
@@ -46,8 +50,8 @@ export async function register(
 ): Promise<{ user: AuthUser; token: string }> {
   const response = await api.post('/auth/register', { email, username, password })
   const { token, user } = response.data
-  setAuthToken(token ?? null)
-  return { user, token: token ?? '' }
+  setAuthToken(token)
+  return { user, token }
 }
 
 export async function login(
@@ -66,7 +70,7 @@ export async function logout(): Promise<void> {
 
 export async function getMe(): Promise<AuthUser> {
   const response = await api.get('/auth/me')
-  return response.data
+  return response.data.user
 }
 
 // Events API
@@ -176,6 +180,29 @@ export async function subscribeToPush(subscription: PushSubscriptionInput): Prom
 // ============================================================================
 
 export type AlertChannel = 'push' | 'email' | 'sms'
+
+// Preferences API — lo que el motor de matching usa para decidir a quién avisar
+export type Severity = 'low' | 'medium' | 'high' | 'critical'
+
+export interface Preferences {
+  alertRadiusKm: number
+  disasterTypes: string[]
+  minSeverity: Severity
+  pushEnabled: boolean
+  emailEnabled: boolean
+  smsEnabled: boolean
+  phone: string | null
+}
+
+export async function fetchPreferences(): Promise<Preferences> {
+  const response = await api.get('/preferences')
+  return response.data
+}
+
+export async function updatePreferences(changes: Partial<Preferences>): Promise<Preferences> {
+  const response = await api.put('/preferences', changes)
+  return response.data
+}
 
 export interface NotificationEvent {
   id: string

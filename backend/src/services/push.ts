@@ -9,7 +9,9 @@
  * borrado…) se registra y se devuelve `false` para que el motor la marque como
  * `failed` y la entrega de email/SMS actúe en consecuencia.
  */
-import * as webpush from 'web-push'
+// `web-push` es CommonJS: en ESM sus funciones solo viven en el export por
+// defecto (`import * as` deja `setVapidDetails` en undefined).
+import webpush from 'web-push'
 import { config } from '../utils/config'
 import logger from '../utils/logger'
 

@@ -106,7 +106,7 @@ git clone https://github.com/armado719/ALERTA360.git
 cd ALERTA360
 
 # 2. Variables de entorno
-cp .env.example .env.produccion
+cp .env.production.example .env.production
 #   DB_USER, DB_PASSWORD, DB_NAME
 #   JWT_SECRET       → openssl rand -hex 32
 #   GRAFANA_PASSWORD
@@ -233,7 +233,7 @@ Cada push a `main` dispara `.github/workflows/deploy.yml`:
 Secretos (Settings → Secrets → Actions): `PROD_HOST`, `PROD_USER`,
 `PROD_SSH_KEY`. Variable opcional: `PROD_DOMAIN` (por defecto `alerta360.com`).
 
-Requisitos en el servidor: `/opt/alerta360` con `.env.produccion`, Docker +
+Requisitos en el servidor: `/opt/alerta360` con `.env.production`, Docker +
 compose v2, `rsync` y el usuario en el grupo `docker`.
 
 La imagen se publica en un paquete de GitHub. Si el paquete es **privado**, o

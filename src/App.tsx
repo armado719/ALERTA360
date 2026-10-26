@@ -3,10 +3,13 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { WifiOff, X } from 'lucide-react'
 import Map from './components/Map'
 import LocationPanel from './components/LocationPanel'
+import SettingsPanel from './components/SettingsPanel'
 import Dashboard from './components/Dashboard'
+import EventsExplorer from './components/EventsExplorer'
 import Header from './components/Header'
 import AuthModal from './components/AuthModal'
 import EventDetailCard from './components/EventDetailCard'
+import PushPrompt from './components/PushPrompt'
 import NotificationsPanel from './components/NotificationsPanel'
 import { usePushSubscription } from './hooks/usePushSubscription'
 import { useAlerts } from './hooks/useAlerts'
@@ -19,11 +22,13 @@ import {
   deleteLocation as deleteLocationApi,
   getMe,
   setAuthToken,
+  DEMO_MODE,
   type AuthUser,
   type Location,
   type ServerNotification,
 } from './services/api'
 import { DEMO_EVENTS } from './data/demoEvents'
+import { ALL_DISASTER_TYPE_VALUES, ALL_SOURCES } from './data/eventTypes'
 
 function App() {
   const [events, setEvents] = useState<DisasterEvent[]>([])
@@ -32,9 +37,12 @@ function App() {
   const [demo, setDemo] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState<DisasterEvent | null>(null)
   const [filters, setFilters] = useState({
-    types: ['earthquake', 'storm', 'flood', 'rain', 'landslide', 'volcanic'] as string[],
+    types: ALL_DISASTER_TYPE_VALUES,
     timeRange: '24h' as '1h' | '24h' | '7d',
+    severities: ['critical', 'high', 'medium', 'low'],
+    sources: ALL_SOURCES,
   })
+  const [showEventsExplorer, setShowEventsExplorer] = useState(false)
   const [timeline, setTimeline] = useState<TimelineState>({
     enabled: false,
     hoursAgo: 0,
@@ -46,10 +54,11 @@ function App() {
   const [showErrorToast, setShowErrorToast] = useState(true)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [showLocationPanel, setShowLocationPanel] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [locations, setLocations] = useState<Location[]>([])
 
   // Registro Web Push (push offline) cuando el usuario está autenticado
-  usePushSubscription(!!user)
+  const push = usePushSubscription(!!user)
 
   /* ---------- Auth ---------- */
   // Alertas del motor de matching: bandeja + push en vivo por WebSocket
@@ -72,6 +81,8 @@ function App() {
   }, [])
 
   useEffect(() => {
+    // En el demo público no hay backend: se entra directo al mapa.
+    if (DEMO_MODE) return
     const initAuth = async () => {
       const token = localStorage.getItem('alerta360_token')
       if (token) {
@@ -116,9 +127,16 @@ function App() {
 
   /* ---------- Eventos ---------- */
   const loadEvents = useCallback(async () => {
+    if (DEMO_MODE) {
+      setDemo(true)
+      setError('Demo público: eventos simulados de las últimas 24 h, sin backend conectado.')
+      setEvents(DEMO_EVENTS)
+      setLoading(false)
+      return
+    }
     try {
       setLoading(true)
-      const data = await fetchDisasterEvents(filters)
+      const data = await fetchDisasterEvents({ types: ALL_DISASTER_TYPE_VALUES, timeRange: filters.timeRange })
       setEvents(data)
       setError(null)
       setDemo(false)
@@ -130,7 +148,7 @@ function App() {
     } finally {
       setLoading(false)
     }
-  }, [filters])
+  }, [filters.timeRange])
 
   useEffect(() => {
     loadEvents()
@@ -161,7 +179,12 @@ function App() {
 
   /* ---------- Filtrado local (también en modo demo) ---------- */
   const visibleEvents = useMemo(() => {
-    const byType = events.filter((e) => filters.types.includes(e.type))
+    const byType = events.filter(
+      (e) =>
+        filters.types.includes(e.type) &&
+        filters.severities.includes(e.severity) &&
+        (filters.sources.includes(e.source) || !ALL_SOURCES.includes(e.source))
+    )
     const now = Date.now()
 
     // Con la línea de tiempo activa: ventana [ahora-24h, ahora-hoursAgo]
@@ -211,6 +234,7 @@ function App() {
         notificationsOpen={notificationsOpen}
         onLocationClick={() => setShowLocationPanel(true)}
         locationsCount={locations.length}
+        onSettingsClick={() => setShowSettings(true)}
       />
 
       <NotificationsPanel
@@ -239,6 +263,14 @@ function App() {
               onTimelineChange={(next) => setTimeline((t) => ({ ...t, ...next }))}
             />
             <EventDetailCard event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+            {!DEMO_MODE && user && push.supported && (
+              <PushPrompt
+                supported={push.supported}
+                permission={push.permission}
+                enable={push.enable}
+                onGranted={() => {}}
+              />
+            )}
 
             {/* Aviso de backend (se oculta solo a los 9 s) */}
             <AnimatePresence>
@@ -275,20 +307,41 @@ function App() {
               selectedEvent={selectedEvent}
               onSelectEvent={setSelectedEvent}
               filters={filters}
-              onFiltersChange={setFilters}
               loading={loading}
               demo={demo}
+               onOpenExplorer={() => setShowEventsExplorer(true)}
             />
           </div>
         </aside>
       </div>
 
+      {showEventsExplorer && (
+        <EventsExplorer
+          events={events}
+          filters={filters}
+          onFiltersChange={setFilters}
+          selectedEvent={selectedEvent}
+          onSelectEvent={(e) => { setSelectedEvent(e); setShowEventsExplorer(false) }}
+          onClose={() => setShowEventsExplorer(false)}
+        />
+      )}
       <LocationPanel
         isOpen={showLocationPanel}
         onClose={() => setShowLocationPanel(false)}
         locations={locations}
         onSave={saveLocation}
         onDelete={deleteLocation}
+      />
+
+      <SettingsPanel
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        user={user}
+        onRequestLogin={() => {
+          setShowSettings(false)
+          setAuthMode('login')
+          setShowAuthModal(true)
+        }}
       />
 
       <AuthModal

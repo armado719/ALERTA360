@@ -54,7 +54,7 @@ const TITLES: Record<DisasterType, string[]> = {
   dust: ['Tormenta de polvo — {z}', 'Alerta de calidad del aire — {z}', 'Humedad extrema — {z}'],
 }
 
-const SOURCES = ['USGS', 'NOAA', 'NASA EONET', 'SGC', 'CENAPRED', 'GDACS']
+const SOURCES = ['usgs', 'noaa', 'nasa_eonet', 'gdacs', 'nhc', 'ideam']
 
 function pick<T>(arr: T[], r: () => number): T {
   return arr[Math.floor(r() * arr.length)]

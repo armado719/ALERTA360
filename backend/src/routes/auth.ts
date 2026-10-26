@@ -15,8 +15,14 @@ const LoginSchema = z.object({
   password: z.string(),
 })
 
+// Campos del usuario que pueden salir al cliente (nunca `passwordHash`).
+const PUBLIC_USER = { id: true, email: true, username: true, phone: true } as const
+
 export async function registerAuthRoutes(fastify: FastifyInstance) {
-  // POST /auth/register
+  const signToken = (user: { id: string; email: string }) =>
+    (fastify as any).jwt.sign({ id: user.id, email: user.email }, { expiresIn: '7d' })
+
+  // POST /auth/register — crea la cuenta y deja la sesión iniciada
   fastify.post('/register', async (request: FastifyRequest, reply: FastifyReply) => {
     const result = RegisterSchema.safeParse(request.body)
     if (!result.success) {
@@ -37,10 +43,10 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
         passwordHash,
         preferences: { create: {} },
       },
-      select: { id: true, email: true, username: true, createdAt: true, updatedAt: true },
+      select: { id: true, email: true, username: true },
     })
 
-    return reply.status(201).send({ user })
+    return reply.status(201).send({ token: signToken(user), user })
   })
 
   // POST /auth/login
@@ -61,19 +67,17 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
       return reply.status(401).send({ error: 'Invalid credentials' })
     }
 
-    const token = (fastify as any).jwt.sign(
-      { id: user.id, email: user.email },
-      { expiresIn: '7d' }
-    )
-
-    return reply.send({ token, user: { id: user.id, email: user.email, username: user.username } })
+    return reply.send({
+      token: signToken(user),
+      user: { id: user.id, email: user.email, username: user.username },
+    })
   })
 
   // GET /auth/me
   fastify.get('/me', { preHandler: requireAuth }, async (request: any, reply: FastifyReply) => {
     const user = await fastify.prisma.user.findUnique({
       where: { id: request.user.id },
-      include: { preferences: true, locations: true },
+      select: PUBLIC_USER,
     })
     if (!user) {
       return reply.status(404).send({ error: 'User not found' })
