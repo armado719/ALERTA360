@@ -5,9 +5,11 @@ import Map from './components/Map'
 import LocationPanel from './components/LocationPanel'
 import SettingsPanel from './components/SettingsPanel'
 import Dashboard from './components/Dashboard'
+import EventsExplorer from './components/EventsExplorer'
 import Header from './components/Header'
 import AuthModal from './components/AuthModal'
 import EventDetailCard from './components/EventDetailCard'
+import PushPrompt from './components/PushPrompt'
 import NotificationsPanel from './components/NotificationsPanel'
 import { usePushSubscription } from './hooks/usePushSubscription'
 import { useAlerts } from './hooks/useAlerts'
@@ -26,6 +28,7 @@ import {
   type ServerNotification,
 } from './services/api'
 import { DEMO_EVENTS } from './data/demoEvents'
+import { ALL_DISASTER_TYPE_VALUES, ALL_SOURCES } from './data/eventTypes'
 
 function App() {
   const [events, setEvents] = useState<DisasterEvent[]>([])
@@ -34,9 +37,12 @@ function App() {
   const [demo, setDemo] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState<DisasterEvent | null>(null)
   const [filters, setFilters] = useState({
-    types: ['earthquake', 'storm', 'flood', 'rain', 'landslide', 'volcanic'] as string[],
+    types: ALL_DISASTER_TYPE_VALUES,
     timeRange: '24h' as '1h' | '24h' | '7d',
+    severities: ['critical', 'high', 'medium', 'low'],
+    sources: ALL_SOURCES,
   })
+  const [showEventsExplorer, setShowEventsExplorer] = useState(false)
   const [timeline, setTimeline] = useState<TimelineState>({
     enabled: false,
     hoursAgo: 0,
@@ -52,7 +58,7 @@ function App() {
   const [locations, setLocations] = useState<Location[]>([])
 
   // Registro Web Push (push offline) cuando el usuario está autenticado
-  usePushSubscription(!!user)
+  const push = usePushSubscription(!!user)
 
   /* ---------- Auth ---------- */
   // Alertas del motor de matching: bandeja + push en vivo por WebSocket
@@ -130,7 +136,7 @@ function App() {
     }
     try {
       setLoading(true)
-      const data = await fetchDisasterEvents(filters)
+      const data = await fetchDisasterEvents({ types: ALL_DISASTER_TYPE_VALUES, timeRange: filters.timeRange })
       setEvents(data)
       setError(null)
       setDemo(false)
@@ -142,7 +148,7 @@ function App() {
     } finally {
       setLoading(false)
     }
-  }, [filters])
+  }, [filters.timeRange])
 
   useEffect(() => {
     loadEvents()
@@ -173,7 +179,12 @@ function App() {
 
   /* ---------- Filtrado local (también en modo demo) ---------- */
   const visibleEvents = useMemo(() => {
-    const byType = events.filter((e) => filters.types.includes(e.type))
+    const byType = events.filter(
+      (e) =>
+        filters.types.includes(e.type) &&
+        filters.severities.includes(e.severity) &&
+        (filters.sources.includes(e.source) || !ALL_SOURCES.includes(e.source))
+    )
     const now = Date.now()
 
     // Con la línea de tiempo activa: ventana [ahora-24h, ahora-hoursAgo]
@@ -252,6 +263,14 @@ function App() {
               onTimelineChange={(next) => setTimeline((t) => ({ ...t, ...next }))}
             />
             <EventDetailCard event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+            {!DEMO_MODE && user && push.supported && (
+              <PushPrompt
+                supported={push.supported}
+                permission={push.permission}
+                enable={push.enable}
+                onGranted={() => {}}
+              />
+            )}
 
             {/* Aviso de backend (se oculta solo a los 9 s) */}
             <AnimatePresence>
@@ -288,14 +307,24 @@ function App() {
               selectedEvent={selectedEvent}
               onSelectEvent={setSelectedEvent}
               filters={filters}
-              onFiltersChange={setFilters}
               loading={loading}
               demo={demo}
+               onOpenExplorer={() => setShowEventsExplorer(true)}
             />
           </div>
         </aside>
       </div>
 
+      {showEventsExplorer && (
+        <EventsExplorer
+          events={events}
+          filters={filters}
+          onFiltersChange={setFilters}
+          selectedEvent={selectedEvent}
+          onSelectEvent={(e) => { setSelectedEvent(e); setShowEventsExplorer(false) }}
+          onClose={() => setShowEventsExplorer(false)}
+        />
+      )}
       <LocationPanel
         isOpen={showLocationPanel}
         onClose={() => setShowLocationPanel(false)}

@@ -33,4 +33,15 @@ describe('GET /geocode/search guard (D1)', () => {
     expect(res.statusCode).toBe(503)
     config.GEOCODE_ENABLED = prevEnabled
   })
+
+  // Regresión: con el guard síncrono la petición nunca respondía si la
+  // geocodificación estaba activa. q de 1 carácter → 400 sin tocar Nominatim.
+  it('con GEOCODE_ENABLED=true el guard deja pasar la petición (no se cuelga)', async () => {
+    config.GEOCODE_ENABLED = 'true'
+    const app = Fastify()
+    await registerGeocodeRoutes(app)
+    const res = await app.inject({ method: 'GET', url: '/geocode/search?q=B' })
+    expect(res.statusCode).toBe(400)
+    config.GEOCODE_ENABLED = prevEnabled
+  }, 3000)
 })

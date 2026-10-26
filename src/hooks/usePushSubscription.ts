@@ -10,7 +10,7 @@
  * app sigue funcionando con las notificaciones en vivo vía WebSocket
  * (`useAlerts`).
  */
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { fetchVapidKey, subscribeToPush, type PushSubscriptionInput } from '../services/api'
 
 /** Convierte la clave pública base64url a Uint8Array (requiere PushManager). */
@@ -28,6 +28,7 @@ export interface PushState {
   ready: boolean
   subscribed: boolean
   permission: NotificationPermission
+  enable: () => Promise<void>
 }
 
 export function usePushSubscription(enabled: boolean): PushState {
@@ -36,6 +37,43 @@ export function usePushSubscription(enabled: boolean): PushState {
   const [subscribed, setSubscribed] = useState(false)
   const [permission, setPermission] = useState<NotificationPermission>('default')
 
+  const subscribe = useCallback(async () => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+    setReady(true)
+    const reg = await navigator.serviceWorker.register('/sw.js')
+    await navigator.serviceWorker.ready
+    const existing = await reg.pushManager.getSubscription()
+    if (existing) {
+      setSubscribed(true)
+      return
+    }
+    const publicKey = await fetchVapidKey()
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey),
+    })
+    const input: PushSubscriptionInput = {
+      endpoint: sub.endpoint,
+      expirationTime: sub.expirationTime ?? null,
+      keys: sub.toJSON().keys as { p256dh: string; auth: string },
+    }
+    await subscribeToPush(input)
+    setSubscribed(true)
+  }, [])
+
+  const enable = useCallback(async () => {
+    if (!supported) return
+    const perm = await Notification.requestPermission()
+    setPermission(perm)
+    if (perm === 'granted') {
+      try {
+        await subscribe()
+      } catch (err) {
+        console.warn('[PUSH] No se pudo suscribir:', err)
+      }
+    }
+  }, [supported, subscribe])
+
   useEffect(() => {
     if (!enabled || typeof window === 'undefined') return
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
@@ -43,44 +81,24 @@ export function usePushSubscription(enabled: boolean): PushState {
       return
     }
     setSupported(true)
+    setPermission(Notification.permission)
 
     let cancelled = false
     void (async () => {
-      const perm = await Notification.requestPermission()
-      if (cancelled) return
-      setPermission(perm)
-      if (perm !== 'granted') return
-      setReady(true)
-
-      const reg = await navigator.serviceWorker.register('/sw.js')
-      await navigator.serviceWorker.ready
-      const existing = await reg.pushManager.getSubscription()
-      if (existing) {
-        setSubscribed(true)
-        return
+      if (Notification.permission === 'granted') {
+        try {
+          await subscribe()
+          if (!cancelled) setSubscribed(true)
+        } catch (err) {
+          if (!cancelled) console.warn('[PUSH] No se pudo suscribir:', err)
+        }
       }
-
-      const publicKey = await fetchVapidKey()
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey),
-      })
-
-      const input: PushSubscriptionInput = {
-        endpoint: sub.endpoint,
-        expirationTime: sub.expirationTime ?? null,
-        keys: sub.toJSON().keys as { p256dh: string; auth: string },
-      }
-      await subscribeToPush(input)
-      if (!cancelled) setSubscribed(true)
-    })().catch((err) => {
-      if (!cancelled) console.warn('[PUSH] No se pudo suscribir:', err)
-    })
+    })()
 
     return () => {
       cancelled = true
     }
-  }, [enabled])
+  }, [enabled, subscribe])
 
-  return { supported, ready, subscribed, permission }
+  return { supported, ready, subscribed, permission, enable }
 }

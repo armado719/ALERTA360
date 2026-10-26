@@ -18,19 +18,67 @@ Este documento registra **todos los cambios significativos** del proyecto ALERTA
 
 ---
 
-## 🩺 Estado actual (medido 2026-10-25)
+## 🩺 Estado actual (medido 2026-10-26)
 
 | Verificación | Resultado |
 |---|---|
 | `tsc --noEmit` backend | ✅ 0 errores |
 | `tsc --noEmit` frontend | ✅ 0 errores |
 | Build frontend (`vite build`) | ✅ 2.465 módulos · `index` 760 kB (247 kB gzip) + `Map3D` 812 kB (221 kB gzip) · aviso de tamaño de chunk |
-| Tests backend | ✅ 174/174 en 18 archivos con la suite completa (`vitest run`). Con la máquina muy cargada llegaron a fallar por timeout `alert-engine.int` y los hooks de `routes`/`docs`; no se repitió en las últimas ejecuciones |
+| Tests backend | ✅ 175/175 en 18 archivos con la suite completa (`vitest run`). Con la máquina muy cargada llegaron a fallar por timeout `alert-engine.int` y los hooks de `routes`/`docs`; no se repitió en las últimas ejecuciones |
 | Cambios sin commitear | Ninguno. Fuera del repo a propósito: `.claude/` (configuración local) e `IDEAN.MD` (prompt usado con opencode) |
 
 ---
 
 ## 🗓️ Historial de Cambios
+### **2026-10-26 — Diálogos propios en lugar de "localhost dice…" + búsqueda de lugares reparada**
+
+#### Diagnóstico:
+- 🐞 Al guardar una zona, `LocationPanel` usaba `prompt('Nombre de la zona:')`: el cuadro gris nativo "localhost dice…", fuera del estilo de la app.
+- 🐞 Al iniciar sesión, `usePushSubscription` pedía el permiso de notificaciones sin contexto ni clic del usuario (los navegadores silencian o bloquean a los sitios que lo hacen).
+- 🐞 **La búsqueda de lugares nunca respondía** desde `52a589c` (2026-10-19): el preHandler `requireGeocodeEnabled` era síncrono y no llamaba a `done()`, así que con la geocodificación activa Fastify esperaba para siempre. Afectaba la búsqueda de zonas y "Usar mi ubicación actual". El test solo cubría el caso desactivado (503). Nominatim respondía bien (1,5 s).
+
+#### Cambios Realizados:
+- ✅ **`src/components/LocationPanel.tsx`** — sin `prompt()`: campo "Nombre de la zona" dentro del panel, precargado con el lugar elegido, `maxLength` 60, Guardar deshabilitado y ayuda si está vacío, Enter guarda.
+- ✅ **`src/hooks/usePushSubscription.ts`** — ya no pide el permiso solo: si está `granted` se suscribe en silencio; expone `enable()` para pedirlo desde un clic.
+- ✅ **`src/components/PushPrompt.tsx`** (nuevo) — tarjeta "Recibe alertas aunque cierres la app" con el estilo de `EventDetailCard`, a los 3 s del login, abajo a la izquierda en escritorio (no tapa "Ver todos") y a lo ancho en celular. "Ahora no" se recuerda 7 días (`localStorage` con try/catch). Si tras "Activar" el permiso queda bloqueado, muestra el aviso del candado; si ya estaba bloqueado de antes, no insiste. No aparece en modo demo.
+- ✅ **`src/App.tsx`** — monta `PushPrompt` con usuario, soporte de push y fuera del modo demo.
+- ✅ **`backend/src/routes/geocode.ts`** — `requireGeocodeEnabled` es `async` (comentario con el porqué).
+- ✅ **`backend/test/geocode.test.ts`** — test de regresión: con la geocodificación activa, `?q=B` responde 400 sin colgarse. Falla sin el arreglo (timeout de 3 s) y pasa con él (88 ms).
+- Implementado por Cline (prompt en esta conversación) y revisado en el navegador; los dos bugs de la tarjeta encontrados en la revisión (desaparecía al bloquear y luego avisaba "bloqueadas" en cada login) y el de la búsqueda se corrigieron aquí.
+
+#### Estado:
+- ✅ TSC frontend y backend 0 · suite backend 175/175 (18 archivos) · 0 `alert(`/`confirm(`/`prompt(` en `src/`
+- ✅ Navegador (login real, permiso simulado): sin permiso automático al entrar; tarjeta a los ~3 s; "Ahora no" la oculta y guarda la fecha; permiso ya bloqueado → sin tarjeta
+- ✅ Zonas: buscar "Santa Marta" → nombre precargado; vacío → Guardar deshabilitado + ayuda; "Santa Marta (QA)" + Enter → guardada y en la lista; 0 diálogos nativos. `/api/geocode/search?q=Santa Marta` → 200 en 3,2 s (antes no respondía)
+- ℹ️ Datos de prueba en la BD local: usuario `qa_tester2` con la zona "Santa Marta (QA)" (50 km)
+
+### **2026-10-26 — Centro de eventos: filtros y listado completo en una ventana grande**
+
+#### Diagnóstico:
+- La sección plegable "FILTRAR POR TIPO" del panel lateral empujaba la lista de eventos y la dejaba casi sin espacio; con cientos de eventos el listado era difícil de recorrer.
+- El filtro por defecto ocultaba huracanes, incendios, sequías, olas de calor y nieve: los ciclones del NHC y los incendios de GDACS no se veían en el mapa.
+- La dona solo tenía 6 colores para 12 tipos.
+
+#### Cambios Realizados:
+- ✅ **`src/data/eventTypes.ts`** (nuevo) — los 12 tipos con color fijo, etiquetas de fuentes, severidades y helpers compartidos.
+- ✅ **`src/App.tsx`** — filtros ampliados (`types`, `timeRange`, `severities`, `sources`), por defecto todo visible. Siempre se piden los 12 tipos al backend y tipo, severidad y fuente se filtran en el frontend, así los conteos existen aunque un filtro esté desmarcado. Una fuente que no esté en la lista conocida pasa siempre (hay eventos viejos con `source='nasa'`).
+- ✅ **`src/components/Dashboard.tsx`** — sin la sección plegable; los 8 eventos más graves/recientes, botón "Ver todos (N) →" y botón de filtros con badge; dona y leyenda con color por tipo.
+- ✅ **`src/components/EventsExplorer.tsx`** (nuevo) — "Centro de eventos": filtros con conteos sobre TODOS los eventos (tipo con Todos/Ninguno, severidad, fuente, período), búsqueda, orden (más graves/recientes/antiguos), 50 filas + "Cargar más", clic → vuela al evento; Escape y clic en el fondo cierran. En celular: pantalla completa y filtros plegados (máx. 60 % del alto).
+- ✅ **`src/data/demoEvents.ts`** — fuentes con códigos reales (`usgs`, `noaa`, `nasa_eonet`, `gdacs`, `nhc`, `ideam`).
+- Implementado por opencode y Cline con el prompt de esta conversación; revisado en el navegador en tres rondas.
+
+#### Bugs encontrados en las revisiones (todos corregidos):
+- Las opciones de filtro se calculaban sobre los eventos ya filtrados: al desmarcar IDEAM desaparecía de la lista.
+- Con la convención "`sources: []` = todas", desmarcar IDEAM dejaba visible **solo** IDEAM (306 → 20).
+- En celular los filtros ocupaban 701 px y a la lista le quedaban 24 px.
+- Al pasar a la lista explícita de fuentes, el **demo público mostraba 0 eventos** (los datos demo usaban `'USGS'`, `'SGC'`, `'CENAPRED'`…).
+- Severidades en inglés ("CRITICAL") y períodos como "1h/24h/7d".
+
+#### Estado:
+- ✅ TSC frontend 0
+- ✅ Navegador: "Ver todos (307)"; desmarcar IDEAM 307 → 287 → 307 con las demás fuentes marcadas; celular 375 px con la lista visible (588 px) y sin scroll horizontal; Escape cierra; severidades en español
+- ✅ Demo (`build:demo` + `vite preview`): "Ver todos (178)", sin tarjeta de notificaciones
 
 ### **2026-10-25 — IDEAM lluvia diaria (A5): primera fuente colombiana**
 

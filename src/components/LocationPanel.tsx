@@ -68,6 +68,7 @@ export default function LocationPanel({
   const [coordInput, setCoordInput] = useState('')
   const [isGpsLoading, setIsGpsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [zoneName, setZoneName] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -115,6 +116,7 @@ export default function LocationPanel({
           })
           setQuery(info.name || info.display_name)
           setResults([])
+          setZoneName(info.name || info.display_name.split(',')[0])
         } catch {
           // Fallback: usar coords directamente
           setSelected({
@@ -125,6 +127,7 @@ export default function LocationPanel({
           })
           setQuery('Mi ubicación')
           setResults([])
+          setZoneName('Mi ubicación')
         }
         setIsGpsLoading(false)
       },
@@ -140,8 +143,8 @@ export default function LocationPanel({
 
   const handleSave = async () => {
     if (!selected) return
-    const name = prompt('Nombre de la zona:', selected.name)
-    if (!name || name.trim() === '') return
+    const trimmed = zoneName.trim()
+    if (!trimmed) return
     setIsSaving(true)
     setError(null)
     try {
@@ -153,7 +156,7 @@ export default function LocationPanel({
         shape: 'circle' | 'polygon'
         polygon?: { type: 'Polygon'; coordinates: [number, number][][] }
       } = {
-        name: name.trim(),
+        name: trimmed,
         latitude: selected.lat,
         longitude: selected.lon,
         radiusKm,
@@ -171,6 +174,7 @@ export default function LocationPanel({
       await onSave(payload)
       setSelected(null)
       setQuery('')
+      setZoneName('')
       setShape('circle')
       setPolygonPoints([])
       setCoordInput('')
@@ -185,7 +189,8 @@ export default function LocationPanel({
     selected &&
     selected.lat !== 0 &&
     selected.lon !== 0 &&
-    (shape === 'circle' || polygonPoints.length >= 3)
+    (shape === 'circle' || polygonPoints.length >= 3) &&
+    zoneName.trim() !== ''
 
   return (
     <AnimatePresence>
@@ -256,9 +261,10 @@ export default function LocationPanel({
                     {results.map((r, i) => (
                       <button
                         key={`${r.lat}-${r.lon}-${i}`}
-                        onClick={() =>
+                        onClick={() => {
                           setSelected({ ...r, display_name: r.display_name })
-                        }
+                          setZoneName(r.name || r.display_name)
+                        }}
                         className="w-full text-left px-3 py-2 hover:bg-white/[0.05]
                                    transition first:rounded-t-xl last:rounded-b-xl"
                       >
@@ -307,6 +313,34 @@ export default function LocationPanel({
                         {selected.lat.toFixed(4)}°, {selected.lon.toFixed(4)}°
                       </div>
                     </div>
+                  </div>
+
+                  {/* Nombre de la zona */}
+                  <div>
+                    <label className="text-[10px] font-bold tracking-[0.1em] text-slate-500">
+                      Nombre de la zona
+                    </label>
+                    <input
+                      type="text"
+                      value={zoneName}
+                      onChange={(e) => setZoneName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && zoneName.trim() && selected) {
+                          e.preventDefault()
+                          handleSave()
+                        }
+                      }}
+                      maxLength={60}
+                      placeholder="Ej.: Casa, Trabajo, Finca"
+                      className="mt-1.5 w-full px-3 py-2 rounded-xl text-[12.5px] text-slate-200
+                                 bg-[#0b131d] border border-white/[0.06] focus:border-cyan-400/40
+                                 outline-none transition"
+                    />
+                    {!zoneName.trim() && (
+                      <p className="mt-1 text-[10px] text-slate-500">
+                        Escribe un nombre para la zona
+                      </p>
+                    )}
                   </div>
 
                   {/* Radio */}
