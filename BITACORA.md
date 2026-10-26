@@ -508,7 +508,7 @@ Este documento registra **todos los cambios significativos** del proyecto ALERTA
 | Fase 0: Validación con usuarios | ⏳ Pendiente | Hubo trabajo en la versión anterior (sept.–oct.), no en la actual | — |
 | Fase 1: MVP frontend | ✅ Completa | Mapa 2D/3D, dashboard, auth, línea de tiempo, zonas | 2026-10-19 |
 | Fase 1: Entrega de alertas | ✅ Completa | SendGrid, Twilio, Swagger | 2026-10-18 |
-| Fase 2: Backend e ingesta | ✅ Completa | 6 fuentes: USGS, NOAA, NASA EONET, GDACS, Meteoalarm, NHC (⚠️ NHC sin commitear) + circuit breaker + frescura | 2026-10-20 |
+| Fase 2: Backend e ingesta | ✅ Completa | 7 fuentes: USGS, NOAA, NASA EONET, GDACS, Meteoalarm, NHC e IDEAM (lluvia diaria, Colombia) + circuit breaker + frescura | 2026-10-25 |
 | Fase 3: Infraestructura de producción | ✅ Lista | Métricas, alertas, TLS, backups, status page, CD con rollback | 2026-10-18 |
 | Fase 3: Push offline | ✅ Completa | Service Worker + Web Push VAPID | 2026-10-19 |
 | Fase 3: Despliegue real | ⏳ Bloqueado (externo) | Falta servidor, DNS, certificado TLS y secretos `PROD_*` | — |
