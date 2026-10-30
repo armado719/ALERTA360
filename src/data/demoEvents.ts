@@ -4,7 +4,8 @@ import { DisasterEvent, DisasterType } from '../types'
  * Datos de demostración (deterministas).
  * Se usan sólo cuando el backend no está disponible, para que el mapa y el
  * panel se vean vivos al abrir la app. Los números replican el mockup:
- * 0 críticos · 4 altos · 0 medios · 174 bajos = 178 eventos.
+ * 0 críticos · 4 altos · 0 medios · 174 bajos = 178 eventos, más los 4
+ * deslizamientos del IDEAM de `IDEAM_LANDSLIDES` (2 altos, 2 medios).
  */
 
 function mulberry32(seed: number) {
@@ -55,6 +56,15 @@ const TITLES: Record<DisasterType, string[]> = {
 }
 
 const SOURCES = ['usgs', 'noaa', 'nasa_eonet', 'gdacs', 'nhc', 'ideam']
+
+// Amenaza por deslizamientos del IDEAM (OSPA): mismo formato que genera el
+// backend, en el centroide de municipios reales.
+const IDEAM_LANDSLIDES = [
+  { dane: '05002', lugar: 'Abejorral (Antioquia)', lat: 5.8038, lng: -75.4385, nivel: 'alta', tres: '47,9', diez: '101,3', dias: 26 },
+  { dane: '05040', lugar: 'Anorí (Antioquia)', lat: 7.1932, lng: -75.1085, nivel: 'alta', tres: '52,9', diez: '126,7', dias: 22 },
+  { dane: '52835', lugar: 'San Andrés de Tumaco (Nariño)', lat: 1.6376, lng: -78.6121, nivel: 'moderada', tres: '31,4', diez: '88,2', dias: 19 },
+  { dane: '86001', lugar: 'Mocoa (Putumayo)', lat: 1.2201, lng: -76.6654, nivel: 'moderada', tres: '28,0', diez: '74,6', dias: 17 },
+] as const
 
 function pick<T>(arr: T[], r: () => number): T {
   return arr[Math.floor(r() * arr.length)]
@@ -111,6 +121,27 @@ export function buildDemoEvents(total = 178): DisasterEvent[] {
       })
     }
     idx++
+  }
+
+  for (const [i, d] of IDEAM_LANDSLIDES.entries()) {
+    const detected = new Date(now - (40 + i * 25) * 60_000)
+    events.push({
+      id: `demo-ideam-desliz-${d.dane}`,
+      type: 'landslide',
+      title: `Amenaza ${d.nivel} por deslizamientos en ${d.lugar}`,
+      description:
+        `Lluvia acumulada: ${d.tres} mm en 3 días y ${d.diez} mm en 10 días (${d.dias} días con lluvia). ` +
+        `Fuente: IDEAM — Oficina del Servicio de Pronósticos y Alertas (OSPA). ` +
+        `Nivel orientativo para prepararse; no es una declaratoria oficial de alerta.`,
+      latitude: d.lat,
+      longitude: d.lng,
+      magnitude: Number(d.diez.replace(',', '.')),
+      severity: d.nivel === 'alta' ? 'high' : 'medium',
+      occurredAt: detected.toISOString(),
+      detectedAt: detected.toISOString(),
+      source: 'ideam',
+      rawData: { demo: true, dane: d.dane, nivel: d.nivel.toUpperCase(), fuente: 'IDEAM — OSPA' },
+    })
   }
 
   return events

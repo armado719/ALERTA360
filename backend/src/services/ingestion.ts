@@ -4,6 +4,7 @@ import logger from '../utils/logger'
 import { config } from '../utils/config'
 import { canFetch, registerSource, reportFailure, reportSuccess } from './sources/health'
 import { isNullIsland, polygonCentroid } from '../utils/geo'
+import { MUNICIPIOS_CO, type Municipio } from '../data/municipiosCo'
 import {
   activeEventsGauge,
   ingestionCycleDuration,
@@ -21,6 +22,8 @@ registerSource('gdacs')
 registerSource('meteoalarm')
 registerSource('nhc')
 registerSource('ideam', { staleAfterMs: 3 * 60 * 60 * 1000 })
+// Breaker propio: el boletín de deslizamientos vive en otro servidor (bart.ideam.gov.co).
+registerSource('ideam_desliz', { staleAfterMs: 6 * 60 * 60 * 1000 })
 
 // ============================================================================
 // USGS Earthquake API
@@ -919,6 +922,269 @@ export function _getLastIDEAMSuccessAt() { return lastIDEAMSuccessAt }
 export function _setLastIDEAMSuccessAt(v: number | null) { lastIDEAMSuccessAt = v }
 
 // ============================================================================
+// IDEAM — Amenaza por deslizamientos (OSPA, Colombia) — A6
+// ============================================================================
+// Boletín diario de la Oficina del Servicio de Pronósticos y Alertas: un CSV
+// (`;`, Latin-1) con los municipios en amenaza BAJA/MODERADA/ALTA. Solo trae el
+// código DANE, así que las coordenadas salen del centroide del municipio
+// (`data/municipiosCo.ts`). Según el IDEAM los niveles orientan la preparación,
+// no son declaratorias oficiales de alerta; la descripción lo aclara.
+export type IDEAMLandslideLevel = 'BAJA' | 'MODERADA' | 'ALTA'
+
+const IDEAM_LANDSLIDE_LEVEL_RANK: Record<IDEAMLandslideLevel, number> = { BAJA: 1, MODERADA: 2, ALTA: 3 }
+const IDEAM_LANDSLIDE_SEVERITY: Record<IDEAMLandslideLevel, string> = { BAJA: 'low', MODERADA: 'medium', ALTA: 'high' }
+const IDEAM_LANDSLIDE_PREFIX = 'ideam-desliz-'
+
+export interface IDEAMLandslideRow {
+  region: string
+  departamento: string
+  municipio: string
+  dane: string
+  nivel: string
+  acumulado3d: number
+  acumulado10d: number
+  diasLluvia: number
+  /** FECHA_EJECUCION normalizada a yyyy-mm-dd ('' si no se pudo leer). */
+  fecha: string
+}
+
+/** dd/mm/yyyy → yyyy-mm-dd; '' si el formato no es válido. */
+function ideamParseDmy(value: string): string {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value.trim())
+  if (!m) return ''
+  return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
+}
+
+/** El CSV llega en Latin-1 y con columnas que se ubican por nombre, no por posición. */
+export function parseIDEAMLandslideCsv(buf: Buffer): IDEAMLandslideRow[] {
+  const lines = buf.toString('latin1').split(/\r?\n/).filter((l) => l.trim() !== '')
+  if (lines.length < 2) return []
+
+  const header = lines[0].split(';').map((h) => h.trim().toUpperCase())
+  const col = (name: string) => header.indexOf(name)
+  const idx = {
+    region: col('REGION'),
+    departamento: col('DEPARTAMENTO'),
+    municipio: col('MUNICIPIO'),
+    dane: col('COD_DANE'),
+    nivel: col('TEXTO_AMENAZA'),
+    tres: col('ACUMULADO_TRES'),
+    diez: col('ACUMULADO_DIEZ'),
+    dias: col('DIAS_LLUVIA'),
+    fecha: col('FECHA_EJECUCION'),
+  }
+  if (idx.dane < 0 || idx.nivel < 0) {
+    throw new Error('CSV de deslizamientos sin columnas COD_DANE/TEXTO_AMENAZA')
+  }
+
+  const rows: IDEAMLandslideRow[] = []
+  for (const line of lines.slice(1)) {
+    const cells = line.split(';').map((c) => c.trim())
+    const get = (i: number) => (i >= 0 ? cells[i] ?? '' : '')
+    rows.push({
+      region: get(idx.region),
+      departamento: get(idx.departamento),
+      municipio: get(idx.municipio),
+      dane: get(idx.dane),
+      nivel: get(idx.nivel).toUpperCase(),
+      acumulado3d: Number(get(idx.tres)),
+      acumulado10d: Number(get(idx.diez)),
+      diasLluvia: Number(get(idx.dias)),
+      fecha: ideamParseDmy(get(idx.fecha)),
+    })
+  }
+  return rows
+}
+
+const IDEAM_LOWERCASE_WORDS = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'el'])
+
+/** "VALLE DEL CAUCA" → "Valle del Cauca"; "EL CARMEN DE ATRATO" → "El Carmen de Atrato". */
+export function ideamTitleCase(value: string): string {
+  return value
+    .toLowerCase()
+    .split(' ')
+    .filter((w) => w !== '')
+    .map((w, i) => (i > 0 && IDEAM_LOWERCASE_WORDS.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1)))
+    .join(' ')
+}
+
+function ideamDecimal(value: number): string {
+  return value.toFixed(1).replace('.', ',')
+}
+
+export function mapIDEAMLandslide(
+  row: IDEAMLandslideRow,
+  municipios: Record<string, Municipio>,
+  minLevel: IDEAMLandslideLevel,
+  now: Date = new Date()
+) {
+  if (!(row.nivel in IDEAM_LANDSLIDE_LEVEL_RANK)) return null
+  const nivel = row.nivel as IDEAMLandslideLevel
+  if (IDEAM_LANDSLIDE_LEVEL_RANK[nivel] < IDEAM_LANDSLIDE_LEVEL_RANK[minLevel]) return null
+
+  if (!/^\d{5}$/.test(row.dane)) return null
+  const municipio = municipios[row.dane]
+  if (!municipio) return null
+  const { lat, lon } = municipio
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null
+  if (isNullIsland({ latitude: lat, longitude: lon })) return null
+  if (!row.fecha) return null
+
+  // El nombre del CSV conserva las tildes ("ANORÍ"); el de DIVIPOLA no siempre.
+  const nombre = ideamTitleCase(row.municipio) || municipio.n
+  const departamento = ideamTitleCase(row.departamento)
+  const lugar = departamento ? `${nombre} (${departamento})` : nombre
+  const nivelTexto = nivel.toLowerCase()
+
+  const tres = Number.isFinite(row.acumulado3d) ? row.acumulado3d : 0
+  const diez = Number.isFinite(row.acumulado10d) ? row.acumulado10d : 0
+  const dias = Number.isFinite(row.diasLluvia) ? Math.round(row.diasLluvia) : 0
+
+  const description =
+    `Lluvia acumulada: ${ideamDecimal(tres)} mm en 3 días y ${ideamDecimal(diez)} mm en 10 días ` +
+    `(${dias} días con lluvia). Boletín del IDEAM del ${ideamLongDate(row.fecha)}. ` +
+    `Fuente: IDEAM — Oficina del Servicio de Pronósticos y Alertas (OSPA). ` +
+    `Nivel orientativo para prepararse; no es una declaratoria oficial de alerta.`
+
+  return {
+    type: 'landslide' as const,
+    source: 'ideam' as const,
+    externalId: `${IDEAM_LANDSLIDE_PREFIX}${row.dane}-${nivelTexto}`,
+    latitude: lat,
+    longitude: lon,
+    magnitude: Number(diez.toFixed(1)),
+    intensity: null,
+    title: `Amenaza ${nivelTexto} por deslizamientos en ${lugar}`,
+    description,
+    severity: IDEAM_LANDSLIDE_SEVERITY[nivel],
+    // La API filtra por occurredAt ≥ ahora − 24 h y el boletín sale una vez al
+    // día: con la fecha del boletín, alertas vigentes saldrían del filtro "24h".
+    occurredAt: now,
+    rawData: {
+      dane: row.dane,
+      municipio: nombre,
+      departamento,
+      region: row.region,
+      nivel,
+      acumulado3d: tres,
+      acumulado10d: diez,
+      diasLluvia: dias,
+      fechaBoletin: row.fecha,
+      fuente: 'IDEAM — OSPA',
+    } as any,
+  }
+}
+
+/** Fecha (yyyy-mm-dd) más frecuente entre las filas; '' si ninguna trae fecha. */
+export function ideamBulletinDate(rows: IDEAMLandslideRow[]): string {
+  const counts = new Map<string, number>()
+  for (const r of rows) if (r.fecha) counts.set(r.fecha, (counts.get(r.fecha) ?? 0) + 1)
+  let best = ''
+  for (const [fecha, n] of counts) if (n > (counts.get(best) ?? 0)) best = fecha
+  return best
+}
+
+type MappedIDEAMLandslide = NonNullable<ReturnType<typeof mapIDEAMLandslide>>
+
+/** Nivel codificado en el externalId ("ideam-desliz-05002-alta" → 3). */
+function ideamLandslideRank(externalId: string | null): number {
+  const nivel = externalId?.split('-').pop()?.toUpperCase() as IDEAMLandslideLevel | undefined
+  return nivel ? IDEAM_LANDSLIDE_LEVEL_RANK[nivel] ?? 0 : 0
+}
+
+/**
+ * Sincroniza el boletín con la base, una alerta por municipio y nivel:
+ * - mismo municipio y nivel → se actualiza (no se vuelve a avisar);
+ * - nivel nuevo → se crea; avisa si sube o es un municipio nuevo, no si baja;
+ * - municipio que sale del boletín (o cambia de nivel) → se desactiva.
+ * Si el boletín llega vacío o tiene más de 3 días no se toca nada: un fallo
+ * del IDEAM no debe apagar todas las alertas.
+ */
+export async function syncIDEAMLandslides(
+  prisma: PrismaClient,
+  mappedList: MappedIDEAMLandslide[],
+  bulletinDate: string,
+  hooks?: IngestionHooks,
+  now: Date = new Date()
+): Promise<{ created: number; updated: number; deactivated: number }> {
+  const result = { created: 0, updated: 0, deactivated: 0 }
+  if (mappedList.length === 0) {
+    logger.warn('ⓘ [INGESTION] IDEAM deslizamientos: boletín sin municipios válidos, no se cambia nada')
+    return result
+  }
+  const bulletinMs = Date.parse(`${bulletinDate}T00:00:00-05:00`)
+  if (!Number.isFinite(bulletinMs) || now.getTime() - bulletinMs > 3 * 24 * 60 * 60 * 1000) {
+    logger.warn(`ⓘ [INGESTION] IDEAM deslizamientos: boletín viejo o sin fecha (${bulletinDate}), no se cambia nada`)
+    return result
+  }
+
+  // Nivel activo más alto por municipio ANTES de este ciclo (para no avisar en una bajada).
+  const previous = await prisma.disasterEvent.findMany({
+    where: { source: 'ideam', isActive: true, externalId: { startsWith: IDEAM_LANDSLIDE_PREFIX } },
+    select: { id: true, externalId: true },
+  })
+  const previousRank = new Map<string, number>()
+  for (const ev of previous) {
+    const dane = ev.externalId?.slice(IDEAM_LANDSLIDE_PREFIX.length, IDEAM_LANDSLIDE_PREFIX.length + 5) ?? ''
+    previousRank.set(dane, Math.max(previousRank.get(dane) ?? 0, ideamLandslideRank(ev.externalId)))
+  }
+
+  const current = new Set<string>()
+  for (const mapped of mappedList) {
+    current.add(mapped.externalId)
+    try {
+      const existing = await prisma.disasterEvent.findFirst({
+        where: { externalId: mapped.externalId, source: 'ideam' },
+      })
+      if (existing) {
+        const { externalId, source, ...changes } = mapped
+        await prisma.disasterEvent.update({
+          where: { id: existing.id },
+          data: { ...changes, isActive: true, stale: false, fetchedAt: now },
+        })
+        result.updated++
+        continue
+      }
+      const created = await prisma.disasterEvent.create({ data: { ...mapped, isActive: true } })
+      result.created++
+      const dane = (mapped.rawData as { dane: string }).dane
+      if (ideamLandslideRank(mapped.externalId) > (previousRank.get(dane) ?? 0)) {
+        await notifyHooks(hooks, created)
+      }
+    } catch (err) {
+      ingestionErrorsTotal.inc({ source: 'ideam' })
+      logger.error({ err, eventId: mapped.externalId }, 'Error guardando deslizamiento IDEAM')
+    }
+  }
+
+  const gone = previous.filter((ev) => ev.externalId && !current.has(ev.externalId)).map((ev) => ev.id)
+  if (gone.length > 0) {
+    const { count } = await prisma.disasterEvent.updateMany({
+      where: { id: { in: gone } },
+      data: { isActive: false },
+    })
+    result.deactivated = count
+  }
+  return result
+}
+
+export async function fetchIDEAMLandslide(): Promise<Buffer> {
+  const res = await axios.get<ArrayBuffer>(config.IDEAM_LANDSLIDE_URL, {
+    timeout: config.IDEAM_LANDSLIDE_TIMEOUT,
+    responseType: 'arraybuffer',
+    headers: { 'User-Agent': 'ALERTA360 (arc.fullstack30@gmail.com)' },
+  })
+  return Buffer.from(res.data)
+}
+
+// Throttle: el boletín sale una vez al día; basta con consultar cada 3 h.
+let lastIDEAMLandslideSuccessAt: number | null = null
+export function _resetIDEAMLandslideThrottle() { lastIDEAMLandslideSuccessAt = null }
+export function _getLastIDEAMLandslideSuccessAt() { return lastIDEAMLandslideSuccessAt }
+export function _setLastIDEAMLandslideSuccessAt(v: number | null) { lastIDEAMLandslideSuccessAt = v }
+
+// ============================================================================
 // Ingestion cycle
 // ============================================================================
 let ingestCounter = 0
@@ -981,7 +1247,7 @@ export async function runFreshnessSweep(
 export async function runIngestion(
   prisma: PrismaClient,
   hooks?: IngestionHooks
-): Promise<{ usgs: number; noaa: number; eonet: number; gdacs: number; meteoalarm: number; nhc: number; ideam: number }> {
+): Promise<{ usgs: number; noaa: number; eonet: number; gdacs: number; meteoalarm: number; nhc: number; ideam: number; ideamDesliz: number }> {
   const cycle = ++ingestCounter
   const startedAt = Date.now()
   logger.info(`[INGESTION] Starting cycle #${cycle}`)
@@ -1201,7 +1467,38 @@ export async function runIngestion(
     logger.warn('ⓘ [INGESTION] IDEAM skipped — circuit breaker abierto')
   }
 
-  const total = usgsInserted + noaaInserted + eonetInserted + gdacsInserted + meteoalarmInserted + nhcInserted + ideamInserted
+  // ---- IDEAM OSPA: amenaza por deslizamientos (Colombia) ----
+  let ideamDeslizInserted = 0
+  if (config.IDEAM_LANDSLIDE_ENABLED === 'true' && canFetch('ideam_desliz')) {
+    const nowMs = Date.now()
+    if (lastIDEAMLandslideSuccessAt !== null && nowMs - lastIDEAMLandslideSuccessAt < 3 * 60 * 60 * 1000) {
+      logger.debug('[INGESTION] IDEAM deslizamientos omitido — aún no pasan 3 h desde la última consulta exitosa')
+    } else {
+      try {
+        const rows = parseIDEAMLandslideCsv(await fetchIDEAMLandslide())
+        const mappedList = rows
+          .map((r) => mapIDEAMLandslide(r, MUNICIPIOS_CO, config.IDEAM_LANDSLIDE_MIN_LEVEL))
+          .filter((m): m is NonNullable<typeof m> => m !== null)
+        reportSuccess('ideam_desliz')
+        lastIDEAMLandslideSuccessAt = Date.now()
+        // Fecha del boletín = la que trae la mayoría de filas. El archivo real
+        // puede colar alguna fila con otra fecha (2026-10-29: 552 con el 29/10 y 1 con el 30/10).
+        const bulletinDate = ideamBulletinDate(rows)
+        const sync = await syncIDEAMLandslides(prisma, mappedList, bulletinDate, hooks)
+        ideamDeslizInserted = sync.created
+        logger.info(
+          `[INGESTION] IDEAM deslizamientos (${bulletinDate}) — ${rows.length} filas, ${mappedList.length} válidas: ` +
+            `${sync.created} nuevas, ${sync.updated} actualizadas, ${sync.deactivated} desactivadas`
+        )
+      } catch (err) {
+        reportFailure('ideam_desliz', err)
+      }
+    }
+  } else if (config.IDEAM_LANDSLIDE_ENABLED === 'true') {
+    logger.warn('ⓘ [INGESTION] IDEAM deslizamientos skipped — circuit breaker abierto')
+  }
+
+  const total = usgsInserted + noaaInserted + eonetInserted + gdacsInserted + meteoalarmInserted + nhcInserted + ideamInserted + ideamDeslizInserted
 
   // ---- métricas ----
   if (usgsInserted > 0) ingestionEventsTotal.inc({ source: 'usgs' }, usgsInserted)
@@ -1211,6 +1508,7 @@ export async function runIngestion(
   if (meteoalarmInserted > 0) ingestionEventsTotal.inc({ source: 'meteoalarm' }, meteoalarmInserted)
   if (nhcInserted > 0) ingestionEventsTotal.inc({ source: 'nhc' }, nhcInserted)
   if (ideamInserted > 0) ingestionEventsTotal.inc({ source: 'ideam' }, ideamInserted)
+  if (ideamDeslizInserted > 0) ingestionEventsTotal.inc({ source: 'ideam' }, ideamDeslizInserted)
   ingestionCycleDuration.set((Date.now() - startedAt) / 1000)
   markIngestionSuccess()
 
@@ -1223,9 +1521,10 @@ export async function runIngestion(
   logger.info(
     `[INGESTION] Cycle #${cycle} complete — USGS: ${usgsInserted} new, ` +
       `NOAA: ${noaaInserted} new, EONET: ${eonetInserted} new, GDACS: ${gdacsInserted} new, ` +
-      `METEOALARM: ${meteoalarmInserted} new, NHC: ${nhcInserted} new, IDEAM: ${ideamInserted} new (${total} total)`
+      `METEOALARM: ${meteoalarmInserted} new, NHC: ${nhcInserted} new, IDEAM: ${ideamInserted} new, ` +
+      `IDEAM-DESLIZ: ${ideamDeslizInserted} new (${total} total)`
   )
-  return { usgs: usgsInserted, noaa: noaaInserted, eonet: eonetInserted, gdacs: gdacsInserted, meteoalarm: meteoalarmInserted, nhc: nhcInserted, ideam: ideamInserted }
+  return { usgs: usgsInserted, noaa: noaaInserted, eonet: eonetInserted, gdacs: gdacsInserted, meteoalarm: meteoalarmInserted, nhc: nhcInserted, ideam: ideamInserted, ideamDesliz: ideamDeslizInserted }
 }
 
 // Schedule: every INGEST_INTERVAL ms

@@ -66,6 +66,13 @@ const ConfigSchema = z.object({
     .default('https://www.datos.gov.co/resource/s54a-sgyg.json'),
   IDEAM_RAIN_MIN_MM: z.coerce.number().default(50),
   IDEAM_TIMEOUT: z.coerce.number().default(30000),
+  // --- IDEAM OSPA (amenaza por deslizamientos, Colombia) — A6
+  IDEAM_LANDSLIDE_ENABLED: z.string().default('false'),
+  IDEAM_LANDSLIDE_URL: z
+    .string()
+    .default('https://bart.ideam.gov.co/ospa/Alertas/modelos/deslizamientos/ultimo/amenaza_idd.csv'),
+  IDEAM_LANDSLIDE_MIN_LEVEL: z.enum(['BAJA', 'MODERADA', 'ALTA']).default('MODERADA'),
+  IDEAM_LANDSLIDE_TIMEOUT: z.coerce.number().default(60000),
 })
 
 type Config = z.infer<typeof ConfigSchema>

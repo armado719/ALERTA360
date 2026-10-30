@@ -23,7 +23,7 @@ const ALERT_TYPES: { type: string; label: string }[] = [
   { type: 'storm', label: 'Tormentas' },
   { type: 'flood', label: 'Inundaciones' },
   { type: 'rain', label: 'Lluvia' },
-  { type: 'landslide', label: 'Avalanchas' },
+  { type: 'landslide', label: 'Deslizamientos' },
   { type: 'volcanic', label: 'Volcánicos' },
   { type: 'hurricane', label: 'Huracanes' },
 ]

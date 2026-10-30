@@ -58,6 +58,11 @@ services:
       IDEAM_RAIN_URL: ${IDEAM_RAIN_URL:-https://www.datos.gov.co/resource/s54a-sgyg.json}
       IDEAM_RAIN_MIN_MM: ${IDEAM_RAIN_MIN_MM:-50}
       IDEAM_TIMEOUT: ${IDEAM_TIMEOUT:-30000}
+      # IDEAM OSPA (amenaza por deslizamientos, Colombia)
+      IDEAM_LANDSLIDE_ENABLED: ${IDEAM_LANDSLIDE_ENABLED:-false}
+      IDEAM_LANDSLIDE_URL: ${IDEAM_LANDSLIDE_URL:-https://bart.ideam.gov.co/ospa/Alertas/modelos/deslizamientos/ultimo/amenaza_idd.csv}
+      IDEAM_LANDSLIDE_MIN_LEVEL: ${IDEAM_LANDSLIDE_MIN_LEVEL:-MODERADA}
+      IDEAM_LANDSLIDE_TIMEOUT: ${IDEAM_LANDSLIDE_TIMEOUT:-60000}
       GEOCODE_ENABLED: ${GEOCODE_ENABLED:-true}
       NOMINATIM_URL: ${NOMINATIM_URL:-https://nominatim.openstreetmap.org}
       # Entrega de alertas (vacío = el canal queda en `skipped`)

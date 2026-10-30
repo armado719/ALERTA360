@@ -14,7 +14,8 @@
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "build:municipios": "tsx scripts/build-municipios.ts"
   },
   "dependencies": {
     "@fastify/cors": "^8.4.0",
