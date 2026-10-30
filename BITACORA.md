@@ -26,12 +26,12 @@ Este documento registra **todos los cambios significativos** del proyecto ALERTA
 | `tsc --noEmit` frontend | ✅ 0 errores |
 | Build frontend (`vite build`) | ✅ 2.465 módulos · `index` 760 kB (247 kB gzip) + `Map3D` 812 kB (221 kB gzip) · aviso de tamaño de chunk |
 | Tests backend | ✅ 190/190 en 19 archivos con la suite completa (`vitest run`). Con la máquina muy cargada (backend y Vite corriendo) 3 archivos pueden fallar por timeout: pasó una vez el 2026-10-29 y las dos ejecuciones siguientes dieron 190/190 |
-| Cambios sin commitear | ⚠️ Sí: iconos 3D de clima. Fuera del repo a propósito: `.claude/` (configuración local) e `IDEAN.MD` (prompt usado con opencode) |
+| Cambios sin commitear | Ninguno. Fuera del repo a propósito: `.claude/` (configuración local) e `IDEAN.MD` (prompt usado con opencode) |
 
 ---
 
 ## 🗓️ Historial de Cambios
-### **2026-10-29 — Iconos 3D de clima desde Figma (lluvia, tormenta, nieve y calor)** · ⚠️ sin commitear
+### **2026-10-29 — Iconos 3D de clima desde Figma (lluvia, tormenta, nieve y calor)** · `1bd520e`
 
 #### Diagnóstico:
 - El usuario eligió el set "Weather 3D Icons" de Jahanvi (Comunidad de Figma), leído con el conector de Figma: 12 iconos, todos de clima. Decidió usarlos también en el mapa, y dejar los SVG propios para los 7 tipos que el set no cubre (sismo, volcán, deslizamiento, inundación, incendio, huracán y polvo). La sequía sigue con su SVG para no repetir el sol de la ola de calor.
