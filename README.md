@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/armado719/ALERTA360/actions/workflows/ci.yml/badge.svg)](https://github.com/armado719/ALERTA360/actions/workflows/ci.yml)
 [![Demo](https://img.shields.io/badge/demo-en%20vivo-22d3ee)](https://armado719.github.io/ALERTA360/)
-![Tests](https://img.shields.io/badge/tests-175%20pasando-25d07d)
+![Tests](https://img.shields.io/badge/tests-190%20pasando-25d07d)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
 
 ### 👉 [Ver el demo en vivo](https://armado719.github.io/ALERTA360/)
@@ -19,7 +19,7 @@
 
 ## 🇬🇧 TL;DR (English)
 
-ALERTA360 is a full-stack disaster-alert platform (React + Fastify + PostgreSQL, TypeScript end to end). It ingests 6 official sources every few minutes, de-duplicates events, matches them against each user's alert zones (circles or polygons, antimeridian-safe) and notifies them in real time via WebSocket, Web Push, email and SMS. It ships with 175 tests, CI, a production Docker/nginx/Prometheus setup and a [live demo](https://armado719.github.io/ALERTA360/). The section [Lo que aprendí](#-lo-que-aprendí-bugs-reales-con-datos-reales) describes real bugs found by testing against live data.
+ALERTA360 is a full-stack disaster-alert platform (React + Fastify + PostgreSQL, TypeScript end to end). It ingests 6 official sources every few minutes, de-duplicates events, matches them against each user's alert zones (circles or polygons, antimeridian-safe) and notifies them in real time via WebSocket, Web Push, email and SMS. It ships with 190 tests, CI, a production Docker/nginx/Prometheus setup and a [live demo](https://armado719.github.io/ALERTA360/). The section [Lo que aprendí](#-lo-que-aprendí-bugs-reales-con-datos-reales) describes real bugs found by testing against live data.
 
 ---
 
@@ -40,12 +40,18 @@ ALERTA360 junta esas fuentes en un solo lugar y, en vez de pedirte que mires un 
 | 📍 **Zonas de alerta** | Círculos (1–1000 km) o polígonos definidos por sus vértices, con búsqueda de lugares o GPS |
 | 🔔 **Alertas en vivo** | WebSocket si la app está abierta; Web Push si está cerrada; email (SendGrid) y SMS (Twilio) |
 | ⚙️ **Preferencias** | Qué tipos de evento, desde qué severidad y por qué canales |
-| 🇨🇴 **Datos de Colombia** | Lluvia intensa de las 488 estaciones del IDEAM |
+| 🇨🇴 **Datos de Colombia** | Lluvia intensa de las 488 estaciones del IDEAM y amenaza por deslizamientos en más de 500 municipios |
 | 📊 **Observabilidad** | Métricas Prometheus, dashboard Grafana, `/health` y página de estado |
 
 ---
 
 ## 🏗️ Cómo funciona
+
+<p align="center">
+  <img src="docs/img/arquitectura.png" alt="Arquitectura de ALERTA360: app web React y Service Worker, nginx, backend Node.js con la API Fastify y la ingesta con el motor de alertas, PostgreSQL y los servicios externos (fuentes, canales de aviso y Nominatim)" width="900">
+</p>
+
+Un solo proceso Node.js hace dos trabajos: la **API Fastify** atiende a la app (REST y WebSocket) y la **ingesta** consulta las fuentes cada 5 minutos y pasa cada evento nuevo por el **motor de alertas**. Así fluyen los datos por dentro:
 
 ```mermaid
 flowchart LR
@@ -55,7 +61,7 @@ flowchart LR
         EONET[NASA EONET]
         GDACS[GDACS]
         NHC[NHC<br/>ciclones]
-        IDEAM[IDEAM<br/>lluvia Colombia]
+        IDEAM[IDEAM<br/>lluvia y deslizamientos]
     end
 
     subgraph Backend [Backend · Fastify]
@@ -98,9 +104,10 @@ flowchart LR
 | **GDACS** (ONU + UE) | Desastres con impacto humanitario (verde/naranja/rojo) | Mundial |
 | **NHC** | Ciclones tropicales con su cono de pronóstico | Atlántico y Pacífico |
 | **IDEAM** | Lluvia diaria por estación (≥ 50 mm) | Colombia |
+| **IDEAM · OSPA** | Amenaza por deslizamientos por municipio (moderada y alta) | Colombia |
 | **Meteoalarm** | Alertas meteorológicas | Europa (desactivada) |
 
-> ⚠️ **Honestidad sobre "tiempo real":** las fuentes se consultan cada pocos minutos; no es una alerta sísmica temprana, que se mide en segundos. Sirve para enterarse rápido de lo que ya ocurrió y, en fenómenos que avisan con horas o días (huracanes, lluvias, inundaciones), para anticiparse. El IDEAM publica sus datos una vez al día, así que esas alertas dicen "ayer".
+> ⚠️ **Honestidad sobre "tiempo real":** las fuentes se consultan cada pocos minutos; no es una alerta sísmica temprana, que se mide en segundos. Sirve para enterarse rápido de lo que ya ocurrió y, en fenómenos que avisan con horas o días (huracanes, lluvias, inundaciones), para anticiparse. El IDEAM publica la lluvia una vez al día, así que esas alertas dicen "ayer", y el boletín de deslizamientos también es diario. Sus niveles orientan la preparación; no son una declaratoria oficial de alerta.
 
 ---
 
@@ -130,12 +137,13 @@ La lección más importante del proyecto: **un test que pasa con datos inventado
 | **La búsqueda de lugares se quedaba colgada** | Un *preHandler* de Fastify síncrono que nunca llamaba a `done()` | `async`, con un test que falla sin el arreglo |
 | **El CI del backend fallaba siempre** | Vitest heredaba el `postcss.config.js` del frontend, que necesita Tailwind | Configuración de PostCSS en línea para los tests |
 | **La lluvia del IDEAM salía el doble en algunas estaciones** | Dos sensores (normal y GPRS) miden la misma lluvia | Sumar por sensor y quedarse con el mayor |
+| **Mariquita (Tolima) caía fuera del mapa** | En la lista oficial de municipios (DIVIPOLA) sus coordenadas perdieron el punto decimal: latitud 525 | Corrección explícita y un test que exige que los 1.122 municipios caigan dentro de Colombia |
 
 ---
 
 ## ✅ Calidad
 
-- **175 tests** (Vitest) en el backend: motor de alertas, geometría, cada fuente con respuestas reales, autenticación, rutas y circuit breaker.
+- **190 tests** (Vitest) en el backend: motor de alertas, geometría, cada fuente con respuestas reales, autenticación, rutas y circuit breaker.
 - **CI en GitHub Actions**: type-check y build del frontend, tests y build del backend, y build de Docker en cada push y PR.
 - **TypeScript estricto** en frontend y backend (`tsc --noEmit` sin errores).
 
@@ -166,7 +174,7 @@ npm install
 npm run dev
 ```
 
-Las fuentes son gratuitas y no piden clave. Email, SMS y push son opcionales: sin sus claves, el sistema sigue funcionando y marca esos envíos como omitidos. Las variables están documentadas en [`backend/.env.example`](backend/.env.example). El IDEAM viene apagado: actívalo con `IDEAM_ENABLED=true`.
+Las fuentes son gratuitas y no piden clave. Email, SMS y push son opcionales: sin sus claves, el sistema sigue funcionando y marca esos envíos como omitidos. Las variables están documentadas en [`backend/.env.example`](backend/.env.example). El IDEAM viene apagado: actívalo con `IDEAM_ENABLED=true` (lluvia) e `IDEAM_LANDSLIDE_ENABLED=true` (deslizamientos).
 
 **Modo demo** (sin backend, el mismo que está publicado): `npm run build:demo && npx vite preview --base=/ALERTA360/`.
 
@@ -182,10 +190,11 @@ Las fuentes son gratuitas y no piden clave. Email, SMS y push son opcionales: si
 
 ## 📌 Estado y próximos pasos
 
-- ✅ Ingesta de 7 fuentes, motor de alertas, zonas, Centro de eventos, autenticación y preferencias.
+- ✅ Ingesta de 8 fuentes, motor de alertas, zonas, Centro de eventos, autenticación y preferencias.
 - ✅ Infraestructura de producción lista (Docker, nginx, métricas, backups, despliegue con rollback).
 - ⏳ **Despliegue en un servidor propio**: pendiente de montar el servidor.
-- ⏳ **Fuentes colombianas en tiempo real**: solicitado acceso al IDEAM (alertas hidrológicas) y al Servicio Geológico Colombiano (sismos).
+- ✅ **Amenaza por deslizamientos del IDEAM**: integrada tras un derecho de petición que el IDEAM respondió confirmando que sus alertas son de libre uso.
+- ⏳ **Alertas hidrológicas del IDEAM** (crecientes de ríos) y **sismos del Servicio Geológico Colombiano**: la primera ya tiene fuente pública; la segunda espera respuesta.
 - ⏳ App móvil (React Native) y modelos de ML: en esqueleto.
 
 El historial completo de cambios está en la [bitácora](BITACORA.md).

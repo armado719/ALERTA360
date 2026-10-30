@@ -1,8 +1,8 @@
 # 📋 BITÁCORA DE CAMBIOS — ALERTA360
 
 **Proyecto:** ALERTA360 — Plataforma Global de Alertas Tempranas para Desastres Naturales  
-**Última actualización:** 2026-10-25  
-**Versión actual:** 0.5.0 — MVP Fases 1-3 + infraestructura de producción + motor de alertas (WebSocket, push offline, email, SMS) + zonas círculo/polígono + catálogo de mejoras Fase 4 (#1–#7) + fuentes NHC (A4) y lluvia del IDEAM (A5, primera fuente colombiana)  
+**Última actualización:** 2026-10-29  
+**Versión actual:** 0.5.0 — MVP Fases 1-3 + infraestructura de producción + motor de alertas (WebSocket, push offline, email, SMS) + zonas círculo/polígono + catálogo de mejoras Fase 4 (#1–#7) + fuentes NHC (A4), lluvia del IDEAM (A5, primera fuente colombiana) y amenaza por deslizamientos del IDEAM OSPA (A6)  
 **Versión de la bitácora:** 1.4
 
 ---
@@ -18,19 +18,81 @@ Este documento registra **todos los cambios significativos** del proyecto ALERTA
 
 ---
 
-## 🩺 Estado actual (medido 2026-10-26)
+## 🩺 Estado actual (medido 2026-10-29)
 
 | Verificación | Resultado |
 |---|---|
 | `tsc --noEmit` backend | ✅ 0 errores |
 | `tsc --noEmit` frontend | ✅ 0 errores |
 | Build frontend (`vite build`) | ✅ 2.465 módulos · `index` 760 kB (247 kB gzip) + `Map3D` 812 kB (221 kB gzip) · aviso de tamaño de chunk |
-| Tests backend | ✅ 175/175 en 18 archivos con la suite completa (`vitest run`). Con la máquina muy cargada llegaron a fallar por timeout `alert-engine.int` y los hooks de `routes`/`docs`; no se repitió en las últimas ejecuciones |
+| Tests backend | ✅ 190/190 en 19 archivos con la suite completa (`vitest run`). Con la máquina muy cargada (backend y Vite corriendo) 3 archivos pueden fallar por timeout: pasó una vez el 2026-10-29 y las dos ejecuciones siguientes dieron 190/190 |
 | Cambios sin commitear | Ninguno. Fuera del repo a propósito: `.claude/` (configuración local) e `IDEAN.MD` (prompt usado con opencode) |
 
 ---
 
 ## 🗓️ Historial de Cambios
+### **2026-10-29 — README: diagrama de arquitectura hecho en Figma**
+
+#### Cambios Realizados:
+- ✅ Diagrama de arquitectura en FigJam (tablero "ALERTA360 — Arquitectura" en el equipo personal), generado a partir del código real: app web React y Service Worker → nginx → un solo proceso Node.js (API Fastify y la ingesta con el motor de alertas) → PostgreSQL, más las fuentes, los canales de aviso y Nominatim. La v1, con un nodo por servicio externo, quedaba ilegible; la v2 los agrupa.
+- ✅ `docs/img/arquitectura.png` (exportada desde Figma, fondo blanco opaco, legible en el modo oscuro de GitHub) en la sección "Cómo funciona" del README, encima del diagrama mermaid del flujo de datos.
+- ✅ README al día con A6: fila "IDEAM · OSPA", nota de que los niveles no son una declaratoria oficial, el bug de Mariquita en "Lo que aprendí", 190 tests y el estado de las peticiones.
+- ℹ️ El tablero de FigJam está en los borradores: para enlazarlo desde el README hay que compartirlo antes como "cualquiera con el enlace puede ver".
+
+---
+
+### **2026-10-29 — Iconos por tipo en el mapa y en las listas + aviso que se ilumina al pasar el mouse** · `bcc9b6e`
+
+#### Diagnóstico:
+- En el mapa todas las alertas eran un punto de color por severidad: un sismo y un deslizamiento se veían iguales. En las listas varios tipos compartían icono (tormenta, huracán y polvo; volcán e incendio), y el Centro de eventos y las notificaciones solo mostraban un punto.
+- El usuario pidió iconos más fáciles de identificar, inspirados en los círculos de color de un kit de clima, pero para todos los tipos y no solo los de clima, más un efecto al pasar el mouse.
+
+#### Cambios Realizados:
+- ✅ **src/data/eventIcons.ts** — 12 iconos propios dibujados en SVG (24×24, trazo blanco redondeado, zonas de dos tonos): sismo, volcán, deslizamiento, inundación, lluvia, tormenta, huracán, incendio, sequía, ola de calor, nieve y polvo. Una sola fuente para Leaflet (HTML en texto) y para React.
+- ✅ **src/components/TypeBadge.tsx** — insignia redonda con volumen (degradado radial, brillo interior y sombra). Se usa en la lista del panel, la dona de "Distribución por tipo", el Centro de eventos (filas y filtro de tipos), las notificaciones (con un punto de severidad) y la tarjeta del evento.
+- ✅ **Mapa 2D** — cada marcador es la insignia del tipo con un **anillo de color de severidad** (azul, amarillo, naranja y rojo). Las altas y críticas laten. Al pasar el mouse el aviso crece un 20 % y se ilumina con el color de su tipo, y aparece un tooltip con tipo, severidad y título. Los grupos llevan una mini insignia del tipo que más aparece y un tooltip con sus tres tipos principales.
+- ✅ **Leyenda** en el mapa (botón bajo el zoom): solo los tipos presentes, ordenados por cantidad, más la explicación del anillo. Se ajusta al alto del mapa y hace scroll.
+- ✅ **Colores** — tormenta, lluvia, huracán y sequía cambian de color (`eventTypes.ts`) para que no se confundan entre sí ni con la severidad.
+- ✅ **Tarjeta del evento** — `z-[650]`: antes quedaba debajo de los botones del mapa (zoom y, ahora, la leyenda).
+- ✅ **Seguridad** — los títulos de las fuentes se escapan antes de ir al tooltip (HTML).
+
+#### Estado:
+- ✅ TSC frontend 0 · build OK
+- ✅ Navegador (app local, 588 eventos): marcadores con icono y anillo, grupos con mini insignia, tooltip ("TERREMOTOS · MEDIO · 1 km SSE of Radwanice, Poland"), seleccionado con `scale(1.2)` y resplandor, leyenda con conteos (Deslizamientos 349, Terremotos 189…) y sin desbordar el mapa; celular 375 px sin scroll horizontal
+- ℹ️ El hover real del mouse no se puede simular en el navegador de pruebas: se verificó el mismo estilo con el estado seleccionado, y el tooltip disparando el evento del marcador
+- ⏳ La vista **3D** (`Map3D.tsx`) sigue con los puntos anteriores
+
+---
+
+### **2026-10-29 — FASE 4 A6: amenaza por deslizamientos del IDEAM (OSPA)** · `ce7c216`
+
+#### Diagnóstico (respuesta oficial y datos reales):
+- El IDEAM respondió el derecho de petición el 2026-10-28 (radicado **20261500185991**, OSPA): sus alertas hidrológicas y de deslizamientos son **públicas y de libre uso académico**. Piden citar "IDEAM — Oficina del Servicio de Pronósticos y Alertas (OSPA)" y aclaran que los niveles orientan la preparación, **no son declaratorias oficiales**.
+- Boletín de deslizamientos: `bart.ideam.gov.co/ospa/Alertas/modelos/deslizamientos/ultimo/amenaza_idd.csv` — `;`, **Latin-1** (no UTF-8), CRLF, un boletín al día. Trae solo el **código DANE**, sin coordenadas. El servidor es lento (descargas de 20–30 s y timeouts).
+- Coordenadas: centroide del municipio de la DIVIPOLA de MinSalud (datos.gov.co `pqwj-3fi4`, 1.122 municipios). DIVIPOLA guarda "5002" y el IDEAM "05002": se normaliza a 5 dígitos. Cruce con el boletín: **0 municipios sin coordenadas**.
+- Dato dañado en origen: **Mariquita (Tolima)** viene en DIVIPOLA con lat 525 / lon -74916667 (perdió el punto decimal) y estaba en amenaza alta. Corregida a mano en el script (5,25 / -74,9167).
+- El boletín del 29-oct traía 552 filas del 29/10 y **una** del 30/10: la fecha del boletín es la de la mayoría de filas.
+- Opciones aprobadas: solo MODERADA y ALTA, coordenadas en un archivo fijo dentro del repo, una alerta por municipio y nivel (vuelve a avisar solo si el nivel sube), "Avalanchas" → "Deslizamientos", apagada por defecto. Implementado aquí (sin opencode).
+
+#### Cambios Realizados:
+- ✅ **scripts/build-municipios.ts** (`npm run build:municipios`) → genera `src/data/municipiosCo.ts` (1.122 municipios, ~65 kB). Es `.ts` y no `.json` para no depender de import attributes al compilar. Falla si no llegan 1.122 o si algún municipio cae fuera de Colombia.
+- ✅ **config.ts** — `IDEAM_LANDSLIDE_ENABLED` (false), `IDEAM_LANDSLIDE_URL`, `IDEAM_LANDSLIDE_MIN_LEVEL` (MODERADA), `IDEAM_LANDSLIDE_TIMEOUT` (60 s). Documentadas en `backend/.env.example`, `.env.production.example` y `docker-compose.prod.yml`.
+- ✅ **ingestion.ts** — `parseIDEAMLandslideCsv` (Latin-1, columnas por nombre), `mapIDEAMLandslide` (ALTA→high, MODERADA→medium, BAJA→low; título "Amenaza alta por deslizamientos en Anorí (Antioquia)"; descripción con lluvia acumulada en 3 y 10 días, atribución OSPA y aclaración), `ideamBulletinDate`, `ideamTitleCase`, `syncIDEAMLandslides`, `fetchIDEAMLandslide`, throttle de 3 h y breaker propio `ideam_desliz` (otro servidor). `occurredAt` = momento de la confirmación, porque `/api/events` filtra las últimas 24 h y el boletín es diario.
+- ✅ **Ciclo de vida** (`syncIDEAMLandslides`), `externalId` = `ideam-desliz-{DANE}-{nivel}`: mismo nivel → se actualiza sin avisar; sube de nivel → evento nuevo con aviso; baja de nivel → evento nuevo sin aviso; sale del boletín → `isActive=false`. Con boletín vacío o de más de 3 días no se toca nada. Nunca toca la lluvia (`ideam-rain-`).
+- ✅ **Frontend** — `landslide` se llama "Deslizamientos" (filtros y Configuración). Nuevo `magnitudeText()`: la lluvia y los deslizamientos ya no se muestran como "M 126.7" sino en mm (antes también le pasaba a la lluvia del IDEAM). El demo suma 4 deslizamientos de ejemplo (2 altos, 2 moderados).
+- ✅ **Tests** — `test/ideam-landslide.test.ts` (15 tests): Latin-1 con tildes/eñes, columnas en otro orden, niveles, DANE inválido, formato título, fecha mayoritaria, ciclo de vida completo con una base en memoria y validación de los 1.122 municipios. Este último test fue el que destapó el dato dañado de Mariquita.
+
+#### Estado:
+- ✅ TSC backend y frontend 0 · suite completa 190/190 (19 archivos) · build del frontend y del demo OK
+- ✅ Ciclo real en el backend local (`IDEAM_LANDSLIDE_ENABLED=true` solo en `backend/.env`, boletín del 29-oct): `ideam_desliz` ok · 553 filas → **349 eventos** (100 altos, 249 moderados), 349 `externalId` distintos, Mariquita en sus coordenadas corregidas
+- ✅ Segundo ciclo con el mismo boletín: **0 nuevos, 349 actualizados, 0 desactivados, 0 avisos**
+- ✅ Navegador: el demo muestra los 4 ejemplos y la tarjeta con la atribución y "126,7 mm en 10 días"; la app local muestra 583 eventos activos, 349 de ellos deslizamientos
+- ℹ️ 0 alertas enviadas, y es lo correcto: "Casa" (Bogotá) está a 19 km de una alerta pero no tiene `landslide` entre sus tipos, y "HUILA" sí lo tiene pero la alerta más cercana está a 65 km (radio de 50 km)
+- ⚠️ Pendiente de decidir: los deslizamientos son el **60 %** de los eventos activos y forman un grupo de 363 sobre Colombia. Valorar `IDEAM_LANDSLIDE_MIN_LEVEL=ALTA` (~100 eventos).
+- ⚠️ Límite conocido: el punto es el centroide del municipio. En municipios grandes, una zona dentro del municipio puede quedar lejos del punto. La mejora natural es usar el polígono del municipio (shapefile del Anexos.zip del IDEAM).
+
+---
+
 ### **2026-10-26 — Diálogos propios en lugar de "localhost dice…" + búsqueda de lugares reparada**
 
 #### Diagnóstico:
@@ -556,12 +618,12 @@ Este documento registra **todos los cambios significativos** del proyecto ALERTA
 | Fase 0: Validación con usuarios | ⏳ Pendiente | Hubo trabajo en la versión anterior (sept.–oct.), no en la actual | — |
 | Fase 1: MVP frontend | ✅ Completa | Mapa 2D/3D, dashboard, auth, línea de tiempo, zonas | 2026-10-19 |
 | Fase 1: Entrega de alertas | ✅ Completa | SendGrid, Twilio, Swagger | 2026-10-18 |
-| Fase 2: Backend e ingesta | ✅ Completa | 7 fuentes: USGS, NOAA, NASA EONET, GDACS, Meteoalarm, NHC e IDEAM (lluvia diaria, Colombia) + circuit breaker + frescura | 2026-10-25 |
+| Fase 2: Backend e ingesta | ✅ Completa | 8 fuentes: USGS, NOAA, NASA EONET, GDACS, Meteoalarm, NHC, IDEAM lluvia diaria e IDEAM OSPA deslizamientos (Colombia) + circuit breaker + frescura | 2026-10-29 |
 | Fase 3: Infraestructura de producción | ✅ Lista | Métricas, alertas, TLS, backups, status page, CD con rollback | 2026-10-18 |
 | Fase 3: Push offline | ✅ Completa | Service Worker + Web Push VAPID | 2026-10-19 |
 | Fase 3: Despliegue real | ⏳ Bloqueado (externo) | Falta servidor, DNS, certificado TLS y secretos `PROD_*` | — |
 | Fase 4: Motor de alertas | ✅ Completo | Matching de 5 reglas, WS, dedup, zonas círculo/polígono | 2026-10-19 |
-| Fase 4: Catálogo de mejoras | 🚧 En curso | Hechas #1 frescura, #2 B5, #3 A3, #4 B1, #5 B3, #6 D1, #7 D2 y A4 NHC | 2026-10-20 |
+| Fase 4: Catálogo de mejoras | 🚧 En curso | Hechas #1 frescura, #2 B5, #3 A3, #4 B1, #5 B3, #6 D1, #7 D2, A4 NHC, A5 IDEAM lluvia y A6 IDEAM deslizamientos | 2026-10-29 |
 | Fase 4: Mobile (React Native) | ⏳ Solo esqueleto | `mobile/package.json` | 2026-10-15 |
 | Fase 4: ML (FastAPI) | ⏳ Solo esqueleto | `ml/api/main.py` | 2026-10-15 |
 
@@ -645,7 +707,9 @@ ALERTA360/
 
 ## ⏳ Pendientes y riesgos conocidos
 
-- ⏳ **Peticiones al IDEAM y al SGC** (enviadas el 2026-10-25): acceso a alertas hidrológicas, de deslizamientos y al catálogo sísmico en tiempo real. Plazo legal de respuesta ≈ 2026-11-09.
+- ✅ **Petición al IDEAM** respondida el 2026-10-28 (radicado 20261500185991): deslizamientos integrados (A6). Falta la **alerta hidrológica** (crecientes): shapefile `Alertas_vigentes.shp` de 6 MB por subzona hidrográfica en `bart.ideam.gov.co/ospa/Alertas/modelos/hidrologia/`.
+- ⏳ **Petición al SGC** (enviada el 2026-10-25): catálogo sísmico en tiempo real y niveles volcánicos. Plazo legal de respuesta ≈ 2026-11-09.
+- ⏳ **IDEAM deslizamientos:** decidir el nivel mínimo (MODERADA hoy son 349 eventos, ALTA unos 100) y, más adelante, usar el polígono del municipio en lugar del centroide.
 - ⏳ **IDEAM:** probar una alerta real con una zona en Colombia (solo se avisa cuando se crea un evento nuevo, es decir, con el siguiente día procesado).
 - ⏳ **`IDEAN.MD`:** el prompt usado con opencode está sin versionar; decidir si moverlo a `docs/` o borrarlo.
 - ⏳ **Meteoalarm en producción:** `METEOALARM_*` tampoco se reenvía en `docker-compose.prod.yml`, así que en prod siempre queda con los valores por defecto (desactivado).
@@ -689,6 +753,6 @@ ALERTA360/
 
 ---
 
-**Última actualización:** 2026-10-25  
+**Última actualización:** 2026-10-29  
 **Versión de la bitácora:** 1.4  
 **Status:** ✅ Activo
