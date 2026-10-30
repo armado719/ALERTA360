@@ -245,6 +245,147 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.7);
 }
 
+/* ---------- Insignia por tipo (mapa, listas y tarjetas) ---------- */
+/* --t = color del tipo (eventTypes.ts). Volumen con un degradado radial y
+   brillo interior; el icono blanco lleva una sombra mínima para leerse. */
+.a360-badge {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 32% 26%,
+      color-mix(in srgb, var(--t) 45%, #fff) 0%,
+      var(--t) 52%,
+      color-mix(in srgb, var(--t) 62%, #000) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.28),
+    0 2px 6px rgba(0, 0, 0, 0.45);
+  transition: transform .18s cubic-bezier(.3, 1.4, .5, 1), box-shadow .18s ease, filter .18s ease;
+}
+
+.a360-badge svg {
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
+}
+
+/* Brillo al pasar el mouse por una fila de lista con insignia */
+.group:hover .a360-badge {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+    0 0 10px color-mix(in srgb, var(--t) 70%, transparent);
+}
+
+/* ---------- Marcador por tipo (2D) ---------- */
+/* El icono dice qué es; el anillo (--s, color de severidad) qué tan grave. */
+.a360-pin {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+.a360-pin .a360-badge {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.28),
+    0 0 0 2px #0b131d,
+    0 0 0 3.5px var(--s),
+    0 4px 10px rgba(0, 0, 0, 0.55);
+}
+
+.a360-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 2px solid var(--s);
+  opacity: 0;
+  animation: a360Ring 2.8s ease-out infinite;
+  pointer-events: none;
+}
+
+.a360-pulse + .a360-pulse {
+  animation-delay: 1.4s;
+}
+
+/* Hover: el aviso se ilumina y crece */
+.a360-pin:hover .a360-badge,
+.a360-pin.is-selected .a360-badge {
+  transform: scale(1.2);
+  filter: brightness(1.12) saturate(1.1);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+    0 0 0 2px #0b131d,
+    0 0 0 4px var(--s),
+    0 0 18px 2px var(--t),
+    0 0 38px 6px color-mix(in srgb, var(--t) 55%, transparent);
+}
+
+.a360-pin.is-selected .a360-badge {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 0 0 2px #fff,
+    0 0 0 4.5px var(--s),
+    0 0 22px 4px var(--t),
+    0 0 44px 8px color-mix(in srgb, var(--t) 55%, transparent);
+}
+
+/* Mini insignia del tipo dominante sobre una burbuja de grupo */
+.a360-bubble { position: relative; }
+
+.a360-bubble .a360-badge {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  box-shadow: 0 0 0 1.5px #0b131d, 0 2px 5px rgba(0, 0, 0, 0.5);
+}
+
+/* ---------- Tooltip de los marcadores ---------- */
+.leaflet-tooltip.a360-tip {
+  padding: 8px 10px;
+  max-width: 260px;
+  white-space: normal;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--t, #22d3ee) 45%, transparent);
+  background: rgba(12, 24, 36, 0.94);
+  color: #e2e8f0;
+  font-family: 'Inter', system-ui, sans-serif;
+  box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.9), 0 0 18px color-mix(in srgb, var(--t, #22d3ee) 30%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.leaflet-tooltip.a360-tip::before { display: none; }
+
+.a360-tip-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.a360-tip-sev {
+  padding: 1px 6px;
+  border-radius: 6px;
+  color: var(--s);
+  background: color-mix(in srgb, var(--s) 16%, transparent);
+}
+
+.a360-tip-title {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #f8fafc;
+}
+
 /* ---------- Animaciones auxiliares ---------- */
 .marker-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
 
@@ -280,7 +421,8 @@ body {
 
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  .a360-halo, .a360-ring, .marker-pulse, .stagger > * { animation: none !important; }
+  .a360-halo, .a360-ring, .a360-pulse, .marker-pulse, .stagger > * { animation: none !important; }
+  .a360-badge { transition: none; }
 }
 
 

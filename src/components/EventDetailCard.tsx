@@ -1,6 +1,8 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, MapPin, Clock, Radio, Activity } from 'lucide-react'
 import { DisasterEvent } from '../types'
+import { magnitudeText } from '../data/eventTypes'
+import TypeBadge from './TypeBadge'
 
 const SEVERITY = {
   critical: { color: '#f87171', label: 'CRÍTICO' },
@@ -39,7 +41,7 @@ export default function EventDetailCard({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 10, scale: 0.98 }}
           transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-          className="absolute left-4 bottom-4 z-40 w-[330px] max-w-[calc(100%-2rem)] max-h-[calc(100%-2rem)] overflow-y-auto rounded-2xl
+          className="absolute left-4 bottom-4 z-[650] w-[330px] max-w-[calc(100%-2rem)] max-h-[calc(100%-2rem)] overflow-y-auto rounded-2xl
                      bg-[#0f1c29]/92 backdrop-blur-xl border border-white/10
                      shadow-[0_30px_70px_-25px_rgba(0,0,0,.95)] overflow-hidden"
         >
@@ -52,7 +54,8 @@ export default function EventDetailCard({
                   style={{ background: `linear-gradient(90deg, ${sev.color}, transparent 85%)` }}
                 />
                 <div className="p-3.5">
-                  <div className="flex items-start gap-2">
+                  <div className="flex items-start gap-2.5">
+                    <TypeBadge type={event.type} size={38} className="mt-0.5" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <span
@@ -102,8 +105,8 @@ export default function EventDetailCard({
                     {event.magnitude !== undefined && (
                       <Stat
                         icon={<Activity className="w-3 h-3" />}
-                        label="Magnitud"
-                        value={`M ${event.magnitude.toFixed(1)}`}
+                        label={event.type === 'rain' || event.type === 'landslide' ? 'Lluvia' : 'Magnitud'}
+                        value={magnitudeText(event.type, event.magnitude)}
                       />
                     )}
                     <Stat

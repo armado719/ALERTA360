@@ -1,5 +1,7 @@
 // Tipos de desastre compartidos entre Dashboard y el Centro de eventos.
 // Mantiene una única fuente de verdad para la lista de tipos y su color.
+// Los colores son distintos entre sí porque pintan los iconos del mapa
+// (`eventIcons.ts`); la severidad va aparte, en el anillo del marcador.
 
 import type { DisasterType } from '../types'
 
@@ -12,14 +14,14 @@ export interface DisasterTypeInfo {
 
 export const DISASTER_TYPES: DisasterTypeInfo[] = [
   { type: 'earthquake', label: 'Terremotos', short: 'Sismos', color: '#f87171' },
-  { type: 'storm', label: 'Tormentas', short: 'Tormentas', color: '#fb923c' },
+  { type: 'storm', label: 'Tormentas', short: 'Tormentas', color: '#f59e0b' },
   { type: 'flood', label: 'Inundaciones', short: 'Inund.', color: '#38bdf8' },
-  { type: 'rain', label: 'Lluvia', short: 'Lluvia', color: '#fbbf24' },
-  { type: 'landslide', label: 'Avalanchas', short: 'Avalan.', color: '#a78bfa' },
+  { type: 'rain', label: 'Lluvia', short: 'Lluvia', color: '#818cf8' },
+  { type: 'landslide', label: 'Deslizamientos', short: 'Desliz.', color: '#a78bfa' },
   { type: 'volcanic', label: 'Volcánicos', short: 'Volcán', color: '#f472b6' },
-  { type: 'hurricane', label: 'Huracanes', short: 'Huracán', color: '#ef4444' },
+  { type: 'hurricane', label: 'Huracanes', short: 'Huracán', color: '#2dd4bf' },
   { type: 'wildfire', label: 'Incendios', short: 'Incendios', color: '#f97316' },
-  { type: 'drought', label: 'Sequía', short: 'Sequía', color: '#eab308' },
+  { type: 'drought', label: 'Sequía', short: 'Sequía', color: '#b45309' },
   { type: 'heatwave', label: 'Ola de calor', short: 'Calor', color: '#dc2626' },
   { type: 'snow', label: 'Nieve', short: 'Nieve', color: '#60a5fa' },
   { type: 'dust', label: 'Dust/Haze', short: 'Aire', color: '#94a3b8' },
@@ -53,6 +55,17 @@ export const SEVERITY_LABELS: Record<string, string> = {
   high: 'Alta',
   medium: 'Media',
   low: 'Baja',
+}
+
+/**
+ * Texto de `magnitude` según el tipo: en lluvia (IDEAM) son milímetros del día
+ * y en deslizamientos (IDEAM OSPA) la lluvia acumulada en 10 días, no una
+ * magnitud sísmica.
+ */
+export function magnitudeText(type: string, magnitude: number): string {
+  if (type === 'rain') return `${Math.round(magnitude)} mm`
+  if (type === 'landslide') return `${magnitude.toFixed(1).replace('.', ',')} mm en 10 días`
+  return `M ${magnitude.toFixed(1)}`
 }
 
 export function severityRank(s: string): number {

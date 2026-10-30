@@ -5,19 +5,11 @@ import {
   Clock,
   Activity,
   Radio,
-  Activity as WaveIcon,
-  Wind,
-  Waves,
-  CloudRain,
-  Mountain,
-  Flame,
-  Snowflake,
-  Droplet,
-  ThermometerSun,
   SlidersHorizontal,
 } from 'lucide-react'
 import { DisasterEvent } from '../types'
-import { DISASTER_TYPES, ALL_SOURCES } from '../data/eventTypes'
+import TypeBadge from './TypeBadge'
+import { DISASTER_TYPES, ALL_SOURCES, magnitudeText } from '../data/eventTypes'
 import { Sparkline, DonutChart } from './Sparkline'
 
 interface DashboardProps {
@@ -41,26 +33,6 @@ const SEVERITY = {
   medium: { color: '#fbbf24', label: 'MEDIO', bg: 'bg-amber-400/10', text: 'text-amber-300', border: 'border-amber-400/30' },
   low: { color: '#38bdf8', label: 'BAJO', bg: 'bg-sky-400/10', text: 'text-sky-300', border: 'border-sky-400/30' },
 } as const
-
-const TYPE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
-  earthquake: WaveIcon,
-  storm: Wind,
-  flood: Waves,
-  rain: CloudRain,
-  landslide: Mountain,
-  volcanic: Flame,
-  hurricane: Wind,
-  wildfire: Flame,
-  drought: Droplet,
-  heatwave: ThermometerSun,
-  snow: Snowflake,
-  dust: Wind,
-}
-
-function TypeIcon({ type, className }: { type: string; className?: string }) {
-  const Icon = TYPE_ICON[type] ?? Activity
-  return <Icon className={className} />
-}
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -102,6 +74,7 @@ export default function Dashboard({
 
   // Datos de la dona
   const donutData = DISASTER_TYPES.filter((dt) => filters.types.includes(dt.type)).map((dt) => ({
+    type: dt.type,
     label: dt.label,
     short: dt.short,
     value: events.filter((e) => e.type === dt.type).length,
@@ -243,10 +216,7 @@ export default function Dashboard({
           <ul className="flex-1 min-w-0 space-y-[3px]">
             {donutData.map((d) => (
               <li key={d.label} className="flex items-center gap-1.5 text-[10px]">
-                <span
-                  className="w-1.5 h-1.5 rounded-full shrink-0"
-                  style={{ background: d.color }}
-                />
+                <TypeBadge type={d.type} size={14} />
                 <span className="flex-1 min-w-0 truncate text-slate-400">{d.short}</span>
                 <span className="text-slate-200 font-semibold tabular-nums">{d.value}</span>
                 <span className="w-7 text-right text-slate-600 tabular-nums">
@@ -292,7 +262,7 @@ export default function Dashboard({
                     }`}
                 >
                   <div className="flex items-center gap-2">
-                    <TypeIcon type={event.type} className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <TypeBadge type={event.type} size={20} />
                     <span className="flex-1 text-[11.5px] font-medium text-slate-200 truncate group-hover:text-white">
                       {event.title}
                     </span>
@@ -306,7 +276,7 @@ export default function Dashboard({
                   <div className="flex items-center justify-between mt-1 pl-[21px] text-[10px] text-slate-500">
                     <span className="flex items-center gap-2">
                       <span className="font-mono">{timeAgo(event.detectedAt)}</span>
-                      {event.magnitude && <span>M {event.magnitude.toFixed(1)}</span>}
+                      {event.magnitude && <span>{magnitudeText(event.type, event.magnitude)}</span>}
                     </span>
                     <span className="uppercase tracking-wide">{event.source}</span>
                   </div>

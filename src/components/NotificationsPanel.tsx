@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Bell, BellOff, CheckCheck, Mail, MessageSquare, X, Zap } from 'lucide-react'
 import type { ServerNotification } from '../services/api'
+import TypeBadge from './TypeBadge'
 
 interface NotificationsPanelProps {
   open: boolean
@@ -179,14 +180,18 @@ export default function NotificationsPanel({
                             for (const id of group.ids) onMarkRead(id)
                             onOpenEvent(notification)
                           }}
-                          className={`w-full text-left px-4 py-3 transition flex gap-3
+                          className={`group w-full text-left px-4 py-3 transition flex gap-3
                                       hover:bg-white/[0.04] ${group.unread ? 'bg-cyan-400/[0.045]' : ''}`}
                         >
-                          <span
-                            className={`mt-[7px] w-2 h-2 rounded-full shrink-0 ${
-                              SEVERITY_COLOR[event.severity] ?? 'bg-slate-400'
-                            }`}
-                          />
+                          {/* Insignia del tipo + punto de severidad */}
+                          <span className="relative mt-0.5 shrink-0 self-start">
+                            <TypeBadge type={event.type} size={30} />
+                            <span
+                              className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-[#0f1c29] ${
+                                SEVERITY_COLOR[event.severity] ?? 'bg-slate-400'
+                              }`}
+                            />
+                          </span>
 
                           <span className="min-w-0 flex-1">
                             <span className="flex items-start justify-between gap-2">

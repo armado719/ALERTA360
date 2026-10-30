@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Search, X, SlidersHorizontal } from 'lucide-react'
 import { DisasterEvent } from '../types'
-import { DISASTER_TYPES, SOURCE_LABELS, ALL_SOURCES, SEVERITY_LABELS, typeColor, severityRank } from '../data/eventTypes'
+import { DISASTER_TYPES, SOURCE_LABELS, ALL_SOURCES, SEVERITY_LABELS, severityRank, magnitudeText } from '../data/eventTypes'
+import TypeBadge from './TypeBadge'
 
 export default function EventsExplorer({
   events,
@@ -160,7 +161,7 @@ export default function EventsExplorer({
                   {DISASTER_TYPES.map((dt) => (
                     <label key={dt.type} className="flex items-center gap-2 text-[11.5px] text-slate-300 cursor-pointer">
                       <input type="checkbox" checked={filters.types.includes(dt.type)} onChange={() => toggleType(dt.type)} className="accent-cyan-400" />
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: dt.color }} />
+                      <TypeBadge type={dt.type} size={18} />
                       <span className="flex-1 truncate">{dt.label}</span>
                       <span className="text-slate-500 tabular-nums">{typeCounts[dt.type] ?? 0}</span>
                     </label>
@@ -220,7 +221,7 @@ export default function EventsExplorer({
                         <button key={event.id} onClick={() => { onSelectEvent(event); onClose() }}
                           className={`w-full text-left rounded-xl px-2.5 py-1.5 border transition group ${isSelected ? 'bg-cyan-400/[0.07] border-cyan-400/40' : 'bg-white/[0.02] border-white/[0.05] hover:bg-white/[0.04] hover:border-white/10'}`}>
                           <div className="flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: typeColor(event.type) }} />
+                            <TypeBadge type={event.type} size={20} />
                             <span className="flex-1 text-[11.5px] font-medium text-slate-200 truncate group-hover:text-white">{event.title}</span>
                             <span className="text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded"
                               style={{ color: SEV_COLORS[event.severity] ?? '#94a3b8', background: `${SEV_COLORS[event.severity] ?? '#94a3b8'}18` }}>
@@ -230,7 +231,7 @@ export default function EventsExplorer({
                           <div className="flex items-center justify-between mt-1 pl-4 text-[10px] text-slate-500">
                             <span className="flex items-center gap-2">
                               <span className="font-mono">{new Date(event.detectedAt).toLocaleString('es-CO', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })}</span>
-                              {event.magnitude && <span>M {event.magnitude.toFixed(1)}</span>}
+                              {event.magnitude && <span>{magnitudeText(event.type, event.magnitude)}</span>}
                             </span>
                             <span className="uppercase tracking-wide">{SOURCE_LABELS[event.source] ?? event.source}</span>
                           </div>

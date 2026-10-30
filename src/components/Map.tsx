@@ -6,6 +6,9 @@ import L from 'leaflet'
 import 'leaflet.heat'
 import { DisasterEvent } from '../types'
 import { Location } from '../services/api'
+import { typeBadgeHtml } from '../data/eventIcons'
+import { DISASTER_TYPES, typeColor, typeLabel } from '../data/eventTypes'
+import TypeBadge from './TypeBadge'
 
 const Map3D = lazy(() => import('./Map3D'))
 
@@ -67,11 +70,11 @@ const TILE_ATTR = 'Tiles &copy; Esri &mdash; Esri, Maxar, Earthstar Geographics,
 /* ------------------------------------------------------------------ */
 function getSeverityConfig(severity: string) {
   switch (severity) {
-    case 'critical': return { color: '#f87171', size: 30, animated: true, label: 'CRÍTICO' }
-    case 'high':     return { color: '#fb923c', size: 26, animated: true, label: 'ALTO' }
-    case 'medium':   return { color: '#fbbf24', size: 22, animated: true, label: 'MEDIO' }
-    case 'low':      return { color: '#38bdf8', size: 18, animated: false, label: 'BAJO' }
-    default:         return { color: '#64748b', size: 18, animated: false, label: 'NORMAL' }
+    case 'critical': return { color: '#f87171', size: 34, animated: true, label: 'CRÍTICO' }
+    case 'high':     return { color: '#fb923c', size: 30, animated: true, label: 'ALTO' }
+    case 'medium':   return { color: '#fbbf24', size: 26, animated: false, label: 'MEDIO' }
+    case 'low':      return { color: '#38bdf8', size: 22, animated: false, label: 'BAJO' }
+    default:         return { color: '#64748b', size: 22, animated: false, label: 'NORMAL' }
   }
 }
 
@@ -84,18 +87,20 @@ function severityWeight(severity: string): number {
   }
 }
 
+/** Los títulos vienen de fuentes externas: se escapan antes de ir a un tooltip HTML. */
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
+}
+
+/** Insignia del tipo con anillo de severidad; las altas y críticas laten. */
 function createCustomIcon(event: DisasterEvent, selected: boolean): L.DivIcon {
   const cfg = getSeverityConfig(event.severity)
-  const size = selected ? cfg.size + 8 : cfg.size
+  const size = selected ? cfg.size + 6 : cfg.size
 
   const html = `
-    <div class="a360-wrap">
-      <div class="a360-marker ${selected ? 'is-selected' : ''} ${cfg.animated ? '' : 'is-static'}"
-           style="--c:${cfg.color}">
-        <span class="a360-halo"></span>
-        ${cfg.animated ? '<span class="a360-ring"></span><span class="a360-ring"></span>' : ''}
-        <span class="a360-dot"></span>
-      </div>
+    <div class="a360-pin ${selected ? 'is-selected' : ''}" style="--s:${cfg.color}">
+      ${cfg.animated ? '<span class="a360-pulse"></span><span class="a360-pulse"></span>' : ''}
+      ${typeBadgeHtml(event.type, size)}
     </div>
   `
 
@@ -106,6 +111,27 @@ function createCustomIcon(event: DisasterEvent, selected: boolean): L.DivIcon {
     iconAnchor: [size / 2, size / 2],
     popupAnchor: [0, -size / 2],
   })
+}
+
+/** Tooltip al pasar el mouse: tipo, severidad y título del aviso. */
+function eventTooltipHtml(event: DisasterEvent): string {
+  const cfg = getSeverityConfig(event.severity)
+  return `
+    <div style="--t:${typeColor(event.type)};--s:${cfg.color}">
+      <div class="a360-tip-head">${typeBadgeHtml(event.type, 16)}<span>${escapeHtml(typeLabel(event.type))}</span>
+        <span class="a360-tip-sev">${cfg.label}</span></div>
+      <div class="a360-tip-title">${escapeHtml(event.title)}</div>
+    </div>
+  `
+}
+
+/** Tooltip de un grupo: total y los tres tipos que más aparecen. */
+function clusterTooltipHtml(top: [string, number][], total: number): string {
+  const rows = top
+    .slice(0, 3)
+    .map(([type, n]) => `<div class="a360-tip-head" style="margin:3px 0 0">${typeBadgeHtml(type, 16)}<span>${escapeHtml(typeLabel(type))} · ${n}</span></div>`)
+    .join('')
+  return `<div style="--t:${typeColor(top[0][0])}"><div class="a360-tip-title">${total} eventos</div>${rows}</div>`
 }
 
 /* ------------------------------------------------------------------ */
@@ -220,10 +246,19 @@ function ClusterLayer({
       merged.forEach((arr) => {
         if (arr.length === 1) {
           const ev = arr[0]
+          const size = getSeverityConfig(ev.severity).size
           const marker = Leaflet.marker([ev.latitude, ev.longitude], {
             icon: createCustomIcon(ev, selectedEvent?.id === ev.id),
             zIndexOffset: selectedEvent?.id === ev.id ? 1000 : 0,
-            title: ev.title,
+            riseOnHover: true,
+            keyboard: true,
+            alt: ev.title,
+          })
+          marker.bindTooltip(eventTooltipHtml(ev), {
+            direction: 'top',
+            offset: [0, -size / 2 - 6],
+            className: 'a360-tip',
+            opacity: 1,
           })
           marker.on('click', () => onSelectEvent(ev))
           group.addLayer(marker)
@@ -236,16 +271,28 @@ function ClusterLayer({
         const color = hasHigh ? '#fb923c' : '#22d3ee'
         const size = arr.length >= 50 ? 48 : arr.length >= 10 ? 40 : 34
 
+        // tipo que más aparece en el grupo → mini insignia y tooltip
+        const byType = new globalThis.Map<string, number>()
+        for (const e of arr) byType.set(e.type, (byType.get(e.type) ?? 0) + 1)
+        const top = [...byType.entries()].sort((a, b) => b[1] - a[1])
+
         const icon = Leaflet.divIcon({
           className: 'a360-wrap',
           html: `<div class="a360-bubble" style="--c:${color};width:${size}px;height:${size}px">
                    <span>${arr.length}</span>
+                   ${typeBadgeHtml(top[0][0], size >= 40 ? 22 : 18)}
                  </div>`,
           iconSize: [size, size],
           iconAnchor: [size / 2, size / 2],
         })
 
-        const marker = Leaflet.marker([lat, lng], { icon, title: `${arr.length} eventos` })
+        const marker = Leaflet.marker([lat, lng], { icon, riseOnHover: true, alt: `${arr.length} eventos` })
+        marker.bindTooltip(clusterTooltipHtml(top, arr.length), {
+          direction: 'top',
+          offset: [0, -size / 2 - 6],
+          className: 'a360-tip',
+          opacity: 1,
+        })
         marker.on('click', () => {
           const bounds = Leaflet.latLngBounds(arr.map((e) => [e.latitude, e.longitude] as [number, number]))
           map.fitBounds(bounds, {
@@ -369,6 +416,12 @@ export default function Map({
   const [heatmap, setHeatmap] = useState(false)
   const [buildings, setBuildings] = useState(false)
   const [layersOpen, setLayersOpen] = useState(false)
+  const [legendOpen, setLegendOpen] = useState(false)
+
+  // Leyenda: solo los tipos presentes, del más al menos frecuente.
+  const legend = DISASTER_TYPES.map((dt) => ({ ...dt, count: events.filter((e) => e.type === dt.type).length }))
+    .filter((dt) => dt.count > 0)
+    .sort((a, b) => b.count - a.count)
 
   const handleFitBounds = () => {
     const map = mapRef.current
@@ -510,6 +563,49 @@ export default function Map({
               <Minus className="w-4 h-4" />
             </button>
           </motion.div>
+
+          {legend.length > 0 && (
+            <div className="absolute top-[100px] bottom-3 left-4 z-[500] flex flex-col items-start gap-2 pointer-events-none [&>*]:pointer-events-auto">
+              <button
+                onClick={() => setLegendOpen((v) => !v)}
+                aria-expanded={legendOpen}
+                title="Leyenda de tipos"
+                className="shrink-0 h-9 pl-2 pr-3 flex items-center gap-2 rounded-xl text-[11px] font-semibold text-slate-200
+                           bg-[#0e1a26]/85 backdrop-blur-md border border-white/10 hover:border-cyan-400/40 transition
+                           shadow-[0_10px_30px_-10px_rgba(0,0,0,.8)]"
+              >
+                <span className="flex -space-x-1.5">
+                  {legend.slice(0, 3).map((dt) => (
+                    <TypeBadge key={dt.type} type={dt.type} size={20} />
+                  ))}
+                </span>
+                Leyenda
+              </button>
+              <AnimatePresence>
+                {legendOpen && (
+                  <motion.ul
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    className="w-[190px] min-h-0 overflow-y-auto p-2 rounded-xl space-y-0.5
+                               bg-[#0e1a26]/92 backdrop-blur-md border border-white/10
+                               shadow-[0_10px_30px_-10px_rgba(0,0,0,.8)]"
+                  >
+                    {legend.map((dt) => (
+                      <li key={dt.type} className="group flex items-center gap-2 px-1.5 py-1 rounded-lg hover:bg-white/5 transition">
+                        <TypeBadge type={dt.type} size={22} />
+                        <span className="flex-1 text-[11.5px] text-slate-200">{dt.label}</span>
+                        <span className="text-[10.5px] tabular-nums text-slate-500">{dt.count}</span>
+                      </li>
+                    ))}
+                    <li className="px-1.5 pt-1.5 mt-1 border-t border-white/10 text-[10px] leading-snug text-slate-500">
+                      El anillo indica la severidad: azul baja, amarillo media, naranja alta y rojo crítica.
+                    </li>
+                  </motion.ul>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
 
           <div className="absolute top-4 right-4 z-[500] flex flex-col gap-2">
             <motion.button
