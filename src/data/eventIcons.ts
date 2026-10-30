@@ -3,6 +3,21 @@
 // (`TypeBadge`). Las zonas con `fill-opacity` dan el efecto de dos tonos.
 
 import { typeColor } from './eventTypes'
+// Iconos 3D de clima: "Weather 3D Icons" de Jahanvi (Comunidad de Figma,
+// archivo 1:661–1:670). Se exportan con su fondo oscuro (#01040C), por eso la
+// insignia 3D usa ese mismo fondo y recorta el icono en círculo.
+import heatwave3d from '../assets/icons3d/heatwave.png'
+import rain3d from '../assets/icons3d/rain.png'
+import snow3d from '../assets/icons3d/snow.png'
+import storm3d from '../assets/icons3d/storm.png'
+
+/** Tipos con icono 3D; el resto usa los SVG propios de abajo. */
+const ICONS_3D: Record<string, string> = {
+  rain: rain3d,
+  storm: storm3d,
+  snow: snow3d,
+  heatwave: heatwave3d,
+}
 
 const FILL = 'fill="#fff" fill-opacity=".28" stroke="none"'
 
@@ -83,6 +98,13 @@ export function typeGlyphSvg(type: string, size: number): string {
 
 /** Insignia redonda (color del tipo + icono) como HTML; la estiliza `.a360-badge`. */
 export function typeBadgeHtml(type: string, size: number): string {
+  const icon3d = ICONS_3D[type]
+  if (icon3d) {
+    return (
+      `<span class="a360-badge is-3d" style="--t:${typeColor(type)};width:${size}px;height:${size}px">` +
+      `<img src="${icon3d}" alt="" draggable="false" width="${size}" height="${size}"></span>`
+    )
+  }
   const glyph = Math.round(size * 0.58)
   return (
     `<span class="a360-badge" style="--t:${typeColor(type)};width:${size}px;height:${size}px">` +

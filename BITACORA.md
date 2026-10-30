@@ -26,11 +26,29 @@ Este documento registra **todos los cambios significativos** del proyecto ALERTA
 | `tsc --noEmit` frontend | ✅ 0 errores |
 | Build frontend (`vite build`) | ✅ 2.465 módulos · `index` 760 kB (247 kB gzip) + `Map3D` 812 kB (221 kB gzip) · aviso de tamaño de chunk |
 | Tests backend | ✅ 190/190 en 19 archivos con la suite completa (`vitest run`). Con la máquina muy cargada (backend y Vite corriendo) 3 archivos pueden fallar por timeout: pasó una vez el 2026-10-29 y las dos ejecuciones siguientes dieron 190/190 |
-| Cambios sin commitear | Ninguno. Fuera del repo a propósito: `.claude/` (configuración local) e `IDEAN.MD` (prompt usado con opencode) |
+| Cambios sin commitear | ⚠️ Sí: iconos 3D de clima. Fuera del repo a propósito: `.claude/` (configuración local) e `IDEAN.MD` (prompt usado con opencode) |
 
 ---
 
 ## 🗓️ Historial de Cambios
+### **2026-10-29 — Iconos 3D de clima desde Figma (lluvia, tormenta, nieve y calor)** · ⚠️ sin commitear
+
+#### Diagnóstico:
+- El usuario eligió el set "Weather 3D Icons" de Jahanvi (Comunidad de Figma), leído con el conector de Figma: 12 iconos, todos de clima. Decidió usarlos también en el mapa, y dejar los SVG propios para los 7 tipos que el set no cubre (sismo, volcán, deslizamiento, inundación, incendio, huracán y polvo). La sequía sigue con su SVG para no repetir el sol de la ola de calor.
+- El export de cada componente trae el fondo oscuro del marco (#01040C, 0 píxeles transparentes). Las capas originales sí son transparentes, pero componerlas exigía una librería de imágenes.
+
+#### Cambios Realizados:
+- ✅ `src/assets/icons3d/` — rain, storm, snow y heatwave (PNG 80×80, ~6–7 kB cada uno), exportados desde Figma (nodos 1:666, 1:668, 1:661 y 1:670).
+- ✅ `eventIcons.ts` — `typeBadgeHtml` usa el PNG 3D cuando el tipo lo tiene. La insignia 3D (`.a360-badge.is-3d`) tiene el mismo fondo #01040C, recorta en círculo y marca el tipo con un aro interior de su color; el anillo de severidad y el hover no cambian. Sirve en el mapa, las listas, la leyenda, la tarjeta y las notificaciones.
+- ✅ README — créditos a Jahanvi (@me_Jahanvi).
+
+#### Estado:
+- ✅ TSC frontend 0 · build del demo OK: los 4 PNG salen con hash y la ruta `/ALERTA360/assets/…`
+- ✅ Navegador: 13 insignias 3D cargadas, 0 errores; se leen bien a 22, 30 y 38 px con el anillo de severidad; la tarjeta de una tormenta muestra el icono 3D en grande
+- ⚠️ Licencia: el archivo invita a usar los iconos en proyectos y pide etiquetar a la autora; falta confirmar la licencia exacta en la página del archivo en la Comunidad de Figma
+
+---
+
 ### **2026-10-29 — README: diagrama de arquitectura hecho en Figma**
 
 #### Cambios Realizados:

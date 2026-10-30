@@ -214,4 +214,6 @@ El proyecto se desarrolló con ayuda de asistentes de IA para programar (Claude 
 
 ---
 
-**Licencia:** [MIT](LICENSE)
+**Licencia:** [MIT](LICENSE) para el código.
+
+**Créditos:** los iconos 3D de lluvia, tormenta, nieve y calor son de *Weather 3D Icons* de **Jahanvi** ([@me_Jahanvi](https://x.com/me_Jahanvi)), publicados en la Comunidad de Figma. Los demás iconos de tipos de desastre son propios.
